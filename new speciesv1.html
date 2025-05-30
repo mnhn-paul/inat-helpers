@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>iNaturalist First-Time Species Finder</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 1em;
+      margin: auto;
+      max-width: 800px;
+    }
+
+    h2 {
+      font-size: 1.4em;
+      margin-bottom: 1em;
+      text-align: center;
+    }
+
+    input, button, select {
+      width: 100%;
+      padding: 0.6em;
+      margin: 0.4em 0;
+      font-size: 1em;
+      box-sizing: border-box;
+    }
+
+    .flex-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5em;
+    }
+
+    .flex-group > * {
+      flex: 1 1 calc(50% - 0.5em);
+    }
+
+    @media (min-width: 600px) {
+      .flex-group > * {
+        flex: 1 1 auto;
+      }
+      input, button, select {
+        width: auto;
+      }
+    }
+
+    button {
+      background-color: #0073e6;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #005bb5;
+    }
+
+    label {
+      display: block;
+      margin: 0.4em 0;
+      font-size: 0.95em;
+    }
+
+    .autocomplete-results {
+      border: 1px solid #ccc;
+      max-height: 200px;
+      overflow-y: auto;
+      background: #fff;
+      position: relative;
+      z-index: 2;
+    }
+
+    .autocomplete-item {
+      display: flex;
+      align-items: center;
+      padding: 0.5em;
+      border-bottom: 1px solid #eee;
+      cursor: pointer;
+    }
+
+    .autocomplete-item img {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      margin-right: 10px;
+    }
+
+    .autocomplete-item:hover {
+      background: #f0f0f0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1em;
+      font-size: 0.95em;
+    }
+
+    th, td {
+      border: 1px solid #ccc;
+      padding: 0.4em;
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    th {
+      background-color: #f2f2f2;
+      cursor: pointer;
+    }
+
+    .highlight {
+      color: green;
+      font-weight: bold;
+    }
+
+    .species-icon {
+      width: 32px;
+      height: 32px;
+      object-fit: cover;
+      margin-right: 8px;
+      border-radius: 4px;
+      vertical-align: middle;
+      cursor: pointer;
+    }
+
+    a {
+      color: #0073e6;
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    #imageModal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.8);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+    }
+
+    #imageModal img {
+      max-width: 90%;
+      max-height: 90%;
+      border-radius: 8px;
+    }
+
+    #imageModal:target {
+      display: flex;
+    }
+
+    #spinner {
+      display: none;
+      margin: 1em 0;
+      text-align: center;
+    }
+
+    .loader {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #0073e6;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      animation: spin 0.8s linear infinite;
+      display: inline-block;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <h2>iNaturalist: First-Time Species Finder</h2>
+
+  <input type="text" id="username" placeholder="Enter iNaturalist username" oninput="autocompleteUser()" autocomplete="off" />
+  <div id="autocomplete" class="autocomplete-results"></div>
+
+  <div class="flex-group">
+    <div>
+      <label for="start">Start Date</label>
+      <input type="date" id="start" />
+    </div>
+    <div>
+      <label for="end">End Date</label>
+      <input type="date" id="end" />
+    </div>
+  </div>
+
+  <div class="flex-group">
+    <button onclick="setDatePreset('today')">Today</button>
+    <button onclick="setDatePreset('yesterday')">Yesterday</button>
+    <button onclick="setDatePreset('last7')">Last 7 Days</button>
+    <button onclick="setDatePreset('month')">This Month</button>
+  </div>
+
+  <label><input type="checkbox" id="speciesOnly" checked /> Only species-level and below</label>
+  <label><input type="checkbox" id="researchGrade" /> Only research-grade observations</label>
+
+  <button style="margin-top: 1em;" onclick="analyze()">Check Observations</button>
+
+  <label style="margin-top: 0.5em;"><input type="checkbox" id="useCommonNames" onchange="updateNameDisplay()" /> Show common names</label>
+
+  <div id="spinner"><div class="loader"></div> Loading...</div>
+  <div id="results"></div>
+
+  <div id="imageModal" onclick="this.style.display='none'">
+    <img id="modalImage" src="" />
+  </div>
+
+  <script>
+    const taxonDataCache = {};
+
+    function setDatePreset(preset) {
+      const now = new Date();
+      let start = new Date();
+      let end = new Date();
+
+      if (preset === 'yesterday') {
+        start.setDate(now.getDate() - 1);
+        end.setDate(now.getDate() - 1);
+      } else if (preset === 'last7') {
+        start.setDate(now.getDate() - 6);
+      } else if (preset === 'month') {
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+      }
+
+      document.getElementById('start').value = start.toISOString().split('T')[0];
+      document.getElementById('end').value = end.toISOString().split('T')[0];
+    }
+
+    async function autocompleteUser() {
+      const query = document.getElementById('username').value;
+      const autocompleteDiv = document.getElementById('autocomplete');
+      if (query.length < 2) {
+        autocompleteDiv.innerHTML = '';
+        return;
+      }
+
+      const res = await fetch(`https://api.inaturalist.org/v1/users/autocomplete?q=${query}`);
+      const data = await res.json();
+
+      autocompleteDiv.innerHTML = '';
+      data.results.slice(0, 5).forEach(user => {
+        const item = document.createElement('div');
+        item.className = 'autocomplete-item';
+        item.innerHTML = `
+          <img src="${user.icon_url || 'https://www.inaturalist.org/assets/icon-user-default-94f84d8c6a65be49c7efefef812e2d1e.png'}">
+          <div>
+            <strong>${user.login}</strong><br>
+            <small>${user.name || ''}</small>
+          </div>
+        `;
+        item.onclick = () => {
+          document.getElementById('username').value = user.login;
+          autocompleteDiv.innerHTML = '';
+        };
+        autocompleteDiv.appendChild(item);
+      });
+    }
+
+    function subtractOneDay(dateStr) {
+      const date = new Date(dateStr);
+      date.setDate(date.getDate() - 1);
+      return date.toISOString().split('T')[0];
+    }
+
+    async function fetchSpeciesCounts(username, start = null, end = null, hrank = true, research = false) {
+      const map = new Map();
+      let page = 1;
+      const perPage = 200;
+      let baseUrl = `https://api.inaturalist.org/v1/observations/species_counts?user_login=${username}&per_page=${perPage}`;
+      if (start) baseUrl += `&d1=${start}`;
+      if (end) baseUrl += `&d2=${end}`;
+      if (hrank) baseUrl += `&hrank=species`;
+      if (research) baseUrl += `&quality_grade=research`;
+
+      while (true) {
+        const res = await fetch(`${baseUrl}&page=${page}`);
+        const data = await res.json();
+        if (data.results.length === 0) break;
+
+        data.results.forEach(obs => {
+          const t = obs.taxon;
+          if (t) {
+            map.set(t.id, {
+              sci: t.name,
+              com: t.preferred_common_name || '',
+              taxon_id: t.id,
+              iconic: t.iconic_taxon_name || '',
+              count: obs.count,
+              photo: t.default_photo?.square_url || '',
+              full: t.default_photo?.medium_url || ''
+            });
+            taxonDataCache[t.id] = map.get(t.id);
+          }
+        });
+
+        if (data.results.length < perPage) break;
+        page++;
+      }
+
+      return map;
+    }
+
+    function sortTable(table, colIndex, isNumeric = false, desc = false) {
+      const rows = Array.from(table.querySelectorAll('tbody tr'));
+      rows.sort((a, b) => {
+        const aVal = isNumeric ? parseFloat(a.cells[colIndex].innerText) : a.cells[colIndex].innerText.toLowerCase();
+        const bVal = isNumeric ? parseFloat(b.cells[colIndex].innerText) : b.cells[colIndex].innerText.toLowerCase();
+        return desc ? bVal - aVal : aVal - bVal;
+      });
+      const tbody = table.querySelector('tbody');
+      rows.forEach(r => tbody.appendChild(r));
+    }
+
+    async function analyze() {
+      const username = document.getElementById('username').value;
+      const start = document.getElementById('start').value;
+      const end = document.getElementById('end').value;
+      const hrank = document.getElementById('speciesOnly').checked;
+      const research = document.getElementById('researchGrade').checked;
+      const resultsDiv = document.getElementById('results');
+      document.getElementById('spinner').style.display = 'inline-block';
+      resultsDiv.innerHTML = '';
+
+      if (!username || !start || !end) {
+        alert("Please enter a username and date range.");
+        return;
+      }
+
+      const s = new Date(start);
+      const e = new Date(end);
+      if ((e - s) / (1000 * 60 * 60 * 24) > 30) {
+        alert("Limit the period to 31 days maximum.");
+        return;
+      }
+
+      try {
+        const [period, allTime, before] = await Promise.all([
+          fetchSpeciesCounts(username, start, end, hrank, research),
+          fetchSpeciesCounts(username, null, null, hrank, research),
+          fetchSpeciesCounts(username, null, subtractOneDay(start), hrank, research)
+        ]);
+
+        let newCount = 0;
+        let rows = '';
+
+        for (let [id, data] of period.entries()) {
+          const total = allTime.get(id)?.count || data.count;
+          const beforeCount = before.get(id)?.count || 0;
+          const isNew = beforeCount === 0;
+          const percent = ((data.count / total) * 100).toFixed(1);
+
+          const obsParams = `user_id=${username}&taxon_id=${id}${research ? '&quality_grade=research' : ''}&place_id=any`;
+          const periodLink = `https://www.inaturalist.lu/observations?${obsParams}&d1=${start}&d2=${end}`;
+          const beforeLink = `https://www.inaturalist.lu/observations?${obsParams}&d2=${subtractOneDay(start)}`;
+          const totalLink = `https://www.inaturalist.lu/observations?${obsParams}`;
+
+          const icon = data.photo
+            ? `<img class="species-icon" src="${data.photo}" title="Click to enlarge" onclick="showImage('${data.full}')" />`
+            : '';
+
+          rows += `
+            <tr>
+              <td class="${isNew ? 'highlight' : ''}" data-id="${id}">
+                ${icon}<a href="https://www.inaturalist.lu/taxa/${id}" target="_blank"><span class="name-text"><i>${data.sci}</i></span></a>
+              </td>
+              <td><a href="${periodLink}" target="_blank">${data.count}</a></td>
+              <td><a href="${beforeLink}" target="_blank">${beforeCount}</a></td>
+              <td><a href="${totalLink}" target="_blank">${total}</a></td>
+              <td>${percent}</td>
+              <td>${data.iconic}</td>
+            </tr>
+          `;
+          if (isNew) newCount++;
+        }
+
+        const percentNew = ((newCount / period.size) * 100).toFixed(1);
+        const allObsLink = `https://www.inaturalist.lu/observations?user_id=${username}&d1=${start}&d2=${end}${research ? '&quality_grade=research' : ''}`;
+
+        resultsDiv.innerHTML = `
+          <p>Found <strong>${period.size}</strong> species during this period. <strong>${newCount}</strong> were new (${percentNew}%).</p>
+          <p><a href="${allObsLink}" target="_blank">View all observations by ${username} from ${start} to ${end}</a></p>
+          <table id="speciesTable">
+            <thead>
+              <tr>
+                <th onclick="sortTable(this.closest('table'), 0)">Scientific Name</th>
+                <th onclick="sortTable(this.closest('table'), 1, true)"># in Period</th>
+                <th onclick="sortTable(this.closest('table'), 2, true)"># Before</th>
+                <th onclick="sortTable(this.closest('table'), 3, true)"># Total</th>
+                <th onclick="sortTable(this.closest('table'), 4, true)">% in Period</th>
+                <th onclick="sortTable(this.closest('table'), 5)">Iconic Taxon</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        `;
+
+        document.getElementById('spinner').style.display = 'none';
+        sortTable(document.getElementById('speciesTable'), 4, true, true);
+      } catch (err) {
+        resultsDiv.innerHTML = "<p>Error retrieving data. Please try again.</p>";
+        console.error(err);
+        document.getElementById('spinner').style.display = 'none';
+      }
+    }
+
+    function showImage(url) {
+      document.getElementById('modalImage').src = url;
+      document.getElementById('imageModal').style.display = 'flex';
+    }
+
+    function updateNameDisplay() {
+      const useCommon = document.getElementById('useCommonNames').checked;
+      document.querySelectorAll('#speciesTable tbody tr').forEach(row => {
+        const id = row.cells[0].getAttribute('data-id');
+        const taxon = taxonDataCache[id];
+        if (taxon) {
+          const span = row.querySelector('.name-text');
+          span.innerHTML = useCommon && taxon.com
+            ? taxon.com
+            : `<i>${taxon.sci}</i>`;
+        }
+      });
+    }
+  </script>
+</body>
+</html>
