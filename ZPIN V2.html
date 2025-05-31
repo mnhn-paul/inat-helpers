@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ZPIN Zones with Chart</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 0;
+      padding: 1rem;
+      background-color: #fdfdfd;
+    }
+
+    input, button {
+      font-size: 1rem;
+      padding: 0.5em;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    #controls {
+      margin-top: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    #map {
+      height: 300px;
+      margin-top: 1rem;
+    }
+
+    #chartContainer {
+      margin-top: 1rem;
+    }
+
+    #spinner {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(255,255,255,0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      display: none;
+    }
+
+    .spinner {
+      border: 6px solid #ccc;
+      border-top: 6px solid #2b7de9;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+      overflow-x: auto;
+      display: block;
+    }
+
+    th, td {
+      border: 1px solid #ccc;
+      padding: 6px 8px;
+      font-size: 0.9rem;
+      white-space: nowrap;
+    }
+
+    th {
+      background-color: #f2f2f2;
+    }
+
+    #progress {
+      font-size: 0.9rem;
+      color: #555;
+      margin-top: 0.5rem;
+    }
+
+    @media (min-width: 600px) {
+      #controls {
+        flex-direction: row;
+        flex-wrap: wrap;
+      }
+
+      #controls > div, #controls > button {
+        flex: 1 1 140px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>ZPIN Zones (Chart + Spinner)</h1>
+
+  <label for="userSearch"><strong>Search iNaturalist User:</strong></label>
+  <input type="text" id="userSearch" placeholder="Start typing username..." />
+  <div id="userResults"></div>
+  <button id="startBtn" disabled>Load Data</button>
+
+  <div id="progress">Waiting for user selection...</div>
+
+  <div id="controls">
+    <div>
+      <label for="minObs">Min Observations:</label>
+      <input type="number" id="minObs" value="0" />
+    </div>
+    <div>
+      <label for="maxObs">Max Observations:</label>
+      <input type="number" id="maxObs" value="1000" />
+    </div>
+    <div>
+      <label for="minPriority">Min Priority:</label>
+      <input type="number" id="minPriority" value="0" />
+    </div>
+    <button onclick="applyFilters()">Apply Filters</button>
+  </div>
+
+  <div id="map"></div>
+
+  <div id="chartContainer">
+    <canvas id="obsChart" width="400" height="200"></canvas>
+  </div>
+
+  <table id="resultsTable">
+    <thead>
+      <tr>
+        <th onclick="sortTable(0)">ZPIN Name</th>
+        <th onclick="sortTable(1)">Observations</th>
+        <th onclick="sortTable(2)">Priority</th>
+        <th onclick="sortTable(3)">Issue</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <div id="spinner"><div class="spinner"></div></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    let allData = [];
+    let selectedUser = null;
+    let markerMap = {};
+    let chart;
+
+    const spinner = document.getElementById('spinner');
+    const userSearch = document.getElementById('userSearch');
+    const userResults = document.getElementById('userResults');
+    const startBtn = document.getElementById('startBtn');
+
+    function showSpinner() { spinner.style.display = 'flex'; }
+    function hideSpinner() { spinner.style.display = 'none'; }
+
+    userSearch.addEventListener('input', async () => {
+      const query = userSearch.value.trim();
+      if (query.length < 2) {
+        userResults.innerHTML = '';
+        return;
+      }
+      const url = `https://api.inaturalist.org/v2/users/autocomplete?q=${encodeURIComponent(query)}&per_page=5&fields=icon,login,name`;
+      const response = await fetch(url);
+      const data = await response.json();
+      userResults.innerHTML = data.results.map(user => `
+        <div onclick="selectUser('${user.login}')">
+          <img src="${user.icon}" width="32" height="32" style="border-radius:50%;">
+          <div>
+            <strong>${user.name || '(no name)'}</strong><br>
+            <small>@${user.login}</small>
+          </div>
+        </div>
+      `).join('');
+    });
+
+    window.selectUser = function(login) {
+      selectedUser = login;
+      document.getElementById('progress').textContent = `Selected user: @${login}`;
+      userResults.innerHTML = '';
+      userSearch.value = login;
+      startBtn.disabled = false;
+    };
+
+    const map = L.map('map').setView([49.8153, 6.1296], 8);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    function getColor(observations) {
+      if (observations <= 5) return 'red';
+      if (observations <= 20) return 'orange';
+      if (observations <= 50) return 'gold';
+      return 'green';
+    }
+
+    function addMarker(zone) {
+      const marker = L.circleMarker([zone.lat, zone.lon], {
+        radius: Math.max(5, Math.sqrt(zone.observations)),
+        color: getColor(zone.observations),
+        fillOpacity: 0.7,
+        weight: 1
+      }).addTo(map);
+      marker.bindPopup(`<strong>${zone.name}</strong><br/>Observations: ${zone.observations}`);
+      markerMap[zone.inatID] = marker;
+    }
+
+    function highlightMarker(inatID) {
+      for (const id in markerMap) {
+        markerMap[id].setStyle({ weight: 1, fillOpacity: 0.7 });
+      }
+      const marker = markerMap[inatID];
+      if (marker) {
+        marker.setStyle({ weight: 3, fillOpacity: 1.0 });
+        marker.openPopup();
+        map.panTo(marker.getLatLng());
+      }
+    }
+
+    function addRow(zone, issue = '') {
+      const tableBody = document.querySelector('#resultsTable tbody');
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td><a href="https://www.wikidata.org/wiki/${zone.wikidataID}" target="_blank">${zone.name}</a></td>
+        <td>${zone.observations ?? '-'}</td>
+        <td>${zone.priority ?? '-'}</td>
+        <td>${issue}</td>
+      `;
+      if (!issue) row.addEventListener('click', () => highlightMarker(zone.inatID));
+      tableBody.appendChild(row);
+    }
+
+    async function fetchINatObservations(placeID, userLogin, retries = 3, delay = 500) {
+      const url = `https://api.inaturalist.org/v2/observations?place_id=${placeID}&user_id=${userLogin}&page=1&per_page=1&order=desc&order_by=created_at`;
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+          const response = await fetch(url);
+          if (!response.ok) {
+            if (response.status === 429) {
+              await new Promise(r => setTimeout(r, delay * Math.pow(2, attempt)));
+              continue;
+            } else {
+              throw new Error(`HTTP ${response.status}`);
+            }
+          }
+          const data = await response.json();
+          return data.total_results;
+        } catch (err) {
+          if (attempt === retries) throw err;
+          await new Promise(r => setTimeout(r, delay * Math.pow(2, attempt)));
+        }
+      }
+    }
+
+    async function fetchWikidataZones() {
+      const query = `
+        SELECT ?zone ?zoneLabel ?inatID ?coord WHERE {
+          ?zone wdt:P31 wd:Q80797879;
+                wdt:P7471 ?inatID;
+                wdt:P1448 ?zoneLabel.
+          OPTIONAL { ?zone wdt:P625 ?coord. }
+          SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+        }
+      `;
+      const url = "https://query.wikidata.org/sparql?format=json&query=" + encodeURIComponent(query);
+      const response = await fetch(url, { headers: { 'Accept': 'application/sparql-results+json' } });
+      const data = await response.json();
+      return data.results.bindings.map(item => {
+        let lat = null, lon = null;
+        if (item.coord) {
+          [lon, lat] = item.coord.value.replace('Point(', '').replace(')', '').split(' ').map(Number);
+        }
+        return {
+          wikidataID: item.zone.value.split('/').pop(),
+          name: item.zoneLabel.value,
+          inatID: item.inatID.value,
+          lat,
+          lon
+        };
+      });
+    }
+
+    async function promisePool(tasks, limit = 5) {
+      const results = [];
+      const executing = [];
+      for (const task of tasks) {
+        const p = task().then(res => {
+          executing.splice(executing.indexOf(p), 1);
+          return res;
+        });
+        results.push(p);
+        executing.push(p);
+        if (executing.length >= limit) {
+          await Promise.race(executing);
+        }
+      }
+      return Promise.all(results);
+    }
+
+    async function loadData(userLogin) {
+      showSpinner();
+      const progress = document.getElementById('progress');
+      const zones = await fetchWikidataZones();
+      allData = [];
+      markerMap = {};
+      document.querySelector('#resultsTable tbody').innerHTML = '';
+      map.eachLayer(layer => {
+        if (layer instanceof L.CircleMarker) map.removeLayer(layer);
+      });
+
+      let completed = 0;
+      const tasks = zones.map(zone => async () => {
+        let issue = '';
+        try {
+          if (zone.lat == null || zone.lon == null) {
+            issue = 'Missing coordinates';
+          } else {
+            const obs = await fetchINatObservations(zone.inatID, userLogin);
+            zone.observations = obs;
+            zone.priority = 100 - obs;
+            addMarker(zone);
+          }
+        } catch (e) {
+          issue = 'Data fetch error';
+        }
+        allData.push(zone);
+        addRow(zone, issue);
+        completed++;
+        progress.textContent = `Loaded ${completed} of ${zones.length}`;
+      });
+
+      await promisePool(tasks, 5);
+      progress.textContent = `Loaded all ${zones.length} zones for @${userLogin}`;
+      updateChart();
+      hideSpinner();
+    }
+
+    function updateChart() {
+      const counts = [0, 0, 0, 0];
+      for (const z of allData) {
+        if (z.observations != null) {
+          if (z.observations <= 5) counts[0]++;
+          else if (z.observations <= 20) counts[1]++;
+          else if (z.observations <= 50) counts[2]++;
+          else counts[3]++;
+        }
+      }
+
+      const ctx = document.getElementById('obsChart').getContext('2d');
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: ['0–5', '6–20', '21–50', '51+'],
+          datasets: [{
+            label: '# of Zones',
+            data: counts,
+            backgroundColor: ['red', 'orange', 'gold', 'green']
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+            title: { display: true, text: 'Zones by Observation Count' }
+          }
+        }
+      });
+    }
+
+    startBtn.addEventListener('click', () => {
+      if (selectedUser) loadData(selectedUser);
+    });
+
+    function sortTable(colIndex) {
+      const rows = Array.from(document.querySelector('#resultsTable tbody').rows);
+      const ascending = !document.querySelectorAll('th')[colIndex].classList.toggle('asc');
+      rows.sort((a, b) => {
+        const aVal = a.cells[colIndex].textContent.trim();
+        const bVal = b.cells[colIndex].textContent.trim();
+        return ascending
+          ? (isNaN(aVal) ? aVal.localeCompare(bVal) : +aVal - +bVal)
+          : (isNaN(bVal) ? bVal.localeCompare(aVal) : +bVal - +aVal);
+      });
+      rows.forEach(row => document.querySelector('#resultsTable tbody').appendChild(row));
+    }
+
+    function applyFilters() {
+      const minObs = parseInt(document.getElementById('minObs').value);
+      const maxObs = parseInt(document.getElementById('maxObs').value);
+      const minPriority = parseInt(document.getElementById('minPriority').value);
+      const tableBody = document.querySelector('#resultsTable tbody');
+      tableBody.innerHTML = '';
+      map.eachLayer(layer => {
+        if (layer instanceof L.CircleMarker) map.removeLayer(layer);
+      });
+
+      for (const zone of allData) {
+        const valid = zone.observations != null && zone.priority != null;
+        if (valid && zone.observations >= minObs && zone.observations <= maxObs && zone.priority >= minPriority) {
+          addMarker(zone);
+          addRow(zone);
+        } else if (!valid) {
+          addRow(zone, zone.lat == null ? 'Missing coordinates' : 'Data fetch error');
+        }
+      }
+      updateChart();
+    }
+  </script>
+</body>
+</html>
