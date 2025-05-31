@@ -8,18 +8,19 @@
     body {
       font-family: Arial, sans-serif;
       text-align: center;
-      margin-top: 20%;
+      margin-top: 5%;
       background-color: #f9f9f9;
     }
     .link-button {
-      display: inline-block;
+      display: block;
+      width: fit-content;
+      margin: 10px auto;
       text-decoration: none;
       color: white;
       background-color: #007acc;
       padding: 10px 20px;
       border-radius: 5px;
       font-size: 18px;
-      margin: 10px;
     }
     .link-button:hover {
       background-color: #005fa3;
@@ -28,9 +29,27 @@
 </head>
 <body>
   <h1>Welcome to My Website</h1>
-  <p>Select a tool to get started:</p>
-  
-  <a class="link-button" href="Tools/new-taxa-user.html">New Taxa Tool</a>
-  <a class="link-button" href="Tools/ZPIN-user.html">ZPIN Tool</a>
+  <p>Select a tool:</p>
+  <div id="tool-links"></div>
+
+  <script>
+    // Manually update this list when you add a new HTML tool file
+    const tools = [
+      { name: "New Taxa Tool", file: "new-taxa-user.html" },
+      { name: "ZPIN Tool", file: "ZPIN-user.html" }
+      // Add more like this:
+      // { name: "Another Tool", file: "another-tool.html" }
+    ];
+
+    const container = document.getElementById("tool-links");
+
+    tools.forEach(tool => {
+      const link = document.createElement("a");
+      link.href = `Tools/${tool.file}`;
+      link.textContent = tool.name;
+      link.className = "link-button";
+      container.appendChild(link);
+    });
+  </script>
 </body>
 </html>
