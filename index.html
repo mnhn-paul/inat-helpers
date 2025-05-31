@@ -3,53 +3,107 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Welcome</title>
+  <title>Tool Index</title>
   <style>
     body {
       font-family: Arial, sans-serif;
-      text-align: center;
-      margin-top: 5%;
+      padding: 2rem;
       background-color: #f9f9f9;
+      max-width: 800px;
+      margin: auto;
     }
-    .link-button {
-      display: block;
-      width: fit-content;
-      margin: 10px auto;
+    h1, h2 {
+      text-align: center;
+    }
+    .tool-category {
+      margin-top: 2rem;
+    }
+    .tool {
+      background: #fff;
+      border-left: 5px solid #007acc;
+      padding: 1rem;
+      margin: 1rem 0;
+      border-radius: 6px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    }
+    .tool a {
       text-decoration: none;
-      color: white;
-      background-color: #007acc;
-      padding: 10px 20px;
-      border-radius: 5px;
       font-size: 18px;
+      font-weight: bold;
+      color: #007acc;
     }
-    .link-button:hover {
-      background-color: #005fa3;
+    .tool a:hover {
+      text-decoration: underline;
+    }
+    .description {
+      color: #555;
+      margin-top: 0.5rem;
     }
   </style>
 </head>
 <body>
-  <h1>Welcome to My Website</h1>
-  <p>Select a tool:</p>
-  <div id="tool-links"></div>
+  <h1>Tool Library</h1>
+  <div id="tool-container"></div>
 
   <script>
-    // Manually update this list when you add a new HTML tool file
     const tools = [
-      { name: "New Taxa Tool", file: "new-taxa-user.html" },
-      { name: "ZPIN Tool", file: "ZPIN-user.html" }
-      // Add more like this:
-      // { name: "Another Tool", file: "another-tool.html" }
+      {
+        name: "New Taxa Tool",
+        file: "new-taxa-user.html",
+        category: "Taxonomy",
+        description: "Register and manage newly described taxa with structured input forms."
+      },
+      {
+        name: "ZPIN Tool",
+        file: "ZPIN-user.html",
+        category: "Identifiers",
+        description: "Assign and manage ZooBank Persistent Identifiers (ZPIN) for specimens."
+      },
+      // Add more tools like this
+      // {
+      //   name: "Tool Name",
+      //   file: "filename.html",
+      //   category: "Category Name",
+      //   description: "Brief description of what the tool does."
+      // }
     ];
 
-    const container = document.getElementById("tool-links");
+    // Group tools by category
+    const grouped = tools.reduce((acc, tool) => {
+      if (!acc[tool.category]) acc[tool.category] = [];
+      acc[tool.category].push(tool);
+      return acc;
+    }, {});
 
-    tools.forEach(tool => {
-      const link = document.createElement("a");
-      link.href = `Tools/${tool.file}`;
-      link.textContent = tool.name;
-      link.className = "link-button";
-      container.appendChild(link);
-    });
+    const container = document.getElementById("tool-container");
+
+    for (const category in grouped) {
+      const section = document.createElement("div");
+      section.className = "tool-category";
+
+      const heading = document.createElement("h2");
+      heading.textContent = category;
+      section.appendChild(heading);
+
+      grouped[category].forEach(tool => {
+        const toolDiv = document.createElement("div");
+        toolDiv.className = "tool";
+
+        const link = document.createElement("a");
+        link.href = `Tools/${tool.file}`;
+        link.textContent = tool.name;
+
+        const desc = document.createElement("div");
+        desc.className = "description";
+        desc.textContent = tool.description;
+
+        toolDiv.appendChild(link);
+        toolDiv.appendChild(desc);
+        section.appendChild(toolDiv);
+      });
+
+      container.appendChild(section);
+    }
   </script>
 </body>
 </html>
