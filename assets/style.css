@@ -1,0 +1,47 @@
+/* General layout */
+body {
+  font-family: Arial, sans-serif;
+  padding: 2rem;
+  background-color: #f9f9f9;
+  max-width: 800px;
+  margin: auto;
+}
+
+/* Headings */
+h1, h2 {
+  text-align: center;
+}
+
+/* Tool category section */
+.tool-category {
+  margin-top: 2rem;
+}
+
+/* Individual tool card */
+.tool {
+  background: #fff;
+  border-left: 5px solid #007acc;
+  padding: 1rem;
+  margin: 1rem 0;
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Tool name link */
+.tool a {
+  text-decoration: none;
+  font-size: 18px;
+  font-weight: bold;
+  color: #007acc;
+}
+
+/* Hover effect */
+.tool a:hover {
+  text-decoration: underline;
+}
+
+/* Description text */
+.description {
+  color: #555;
+  margin-top: 0.5rem;
+}
