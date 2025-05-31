@@ -1,1 +1,124 @@
+<!DOCTYPE html><html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Luxembourg Communes</title>
+    <style>
+        #map {
+            height: 500px;
+            margin-top: 20px;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-sA+e2fB9sG+S7Lx4GiU3Bk86Y70k0U/6G2v1IJ0XkRo=" crossorigin=""/>
+</head>
+<body>
+    <h1>Current Communes of Luxembourg</h1>
+    <table id="communes">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Area (ha)</th>
+                <th>Latest Population</th>
+                <th>iNaturalist Place ID</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Rows will be populated by JavaScript -->
+        </tbody>
+    </table><div id="map"></div>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-SmHg+MdWg+3U/WowD+UceHe0JOK+U8tvhBOzLSpP5Ck=" crossorigin=""></script>
+<script>
+    const endpointUrl = 'https://query.wikidata.org/sparql';
+    const sparqlQuery = `
+    SELECT ?commune ?communeLabel ?area ?population ?inatId ?coord WHERE {
+      ?commune wdt:P31 wd:Q484170;         # instance of commune
+               wdt:P17 wd:Q32.             # in country Luxembourg
+      OPTIONAL { ?commune wdt:P2046 ?area. }  # area in square meters
+      OPTIONAL {
+        ?commune p:P1082 ?popStatement.
+        ?popStatement ps:P1082 ?population;
+                      pq:P585 ?date.
+      }
+      OPTIONAL { ?commune wdt:P7475 ?inatId. } # iNaturalist place ID
+      OPTIONAL { ?commune wdt:P625 ?coord. } # coordinate location
+      FILTER NOT EXISTS { ?commune wdt:P576 ?dissolved. } # not dissolved
+      SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+    }
+    ORDER BY ?communeLabel
+    `;
+
+    function runQuery() {
+        fetch(endpointUrl + '?query=' + encodeURIComponent(sparqlQuery), {
+            headers: { 'Accept': 'application/sparql-results+json' }
+        })
+        .then(response => response.json())
+        .then(data => {
+            const rows = data.results.bindings;
+            const tableBody = document.querySelector('#communes tbody');
+            const communeMap = new Map();
+            const map = L.map('map').setView([49.75, 6.1], 9);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+
+            rows.forEach(row => {
+                const name = row.communeLabel?.value || '';
+                const areaSqM = parseFloat(row.area?.value || 0);
+                const areaHa = areaSqM ? (areaSqM / 10000).toFixed(2) : '';
+                const population = row.population?.value || '';
+                const inatId = row.inatId?.value || '';
+                const coordStr = row.coord?.value || '';
+
+                if (!communeMap.has(name)) {
+                    // Add to table
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${name}</td>
+                        <td>${areaHa}</td>
+                        <td>${population}</td>
+                        <td>${inatId}</td>
+                    `;
+                    tableBody.appendChild(tr);
+
+                    // Add marker to map
+                    if (coordStr) {
+                        const match = coordStr.match(/Point([-0-9.]+) ([-0-9.]+)/);
+                        if (match) {
+                            const lon = parseFloat(match[1]);
+                            const lat = parseFloat(match[2]);
+                            const marker = L.marker([lat, lon]).addTo(map);
+                            marker.bindPopup(`
+                                <strong>${name}</strong><br>
+                                Area: ${areaHa} ha<br>
+                                Population: ${population}<br>
+                                iNaturalist ID: ${inatId || 'N/A'}
+                            `);
+                        }
+                    }
+
+                    communeMap.set(name, true);
+                }
+            });
+        })
+        .catch(error => {
+            console.error('Error querying Wikidata:', error);
+        });
+    }
+
+    runQuery();
+</script>
+
+</body>
+</html>
