@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>usefull links</title>
+  <link rel="stylesheet" href="../assets/style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>usefull links</h1>
+
+    <div id="tag-filters" class="tag-filters">
+      <!-- Tag filter buttons will be inserted here -->
+    </div>
+
+    <ul id="link-list">
+      <!-- Link entries will be rendered here -->
+    </ul>
+  </div>
+
+  <script>
+    const links = [
+      {
+        title: "MDN Web Docs",
+        url: "https://developer.mozilla.org/",
+        description: "Comprehensive resource for web developers, including documentation for HTML, CSS, and JavaScript.",
+        tags: ["docs", "web", "reference"]
+      },
+      {
+        title: "GitHub",
+        url: "https://github.com/",
+        description: "Code hosting platform for version control and collaboration.",
+        tags: ["tools", "code", "repository"]
+      },
+      {
+        title: "CSS Tricks",
+        url: "https://css-tricks.com/",
+        description: "Tips, tricks, and techniques on using CSS effectively.",
+        tags: ["css", "web", "design"]
+      }
+    ];
+
+    const linkList = document.getElementById('link-list');
+    const tagFilters = document.getElementById('tag-filters');
+    let selectedTag = null;
+
+    function renderLinks() {
+      linkList.innerHTML = '';
+      links
+        .filter(link => !selectedTag || link.tags.includes(selectedTag))
+        .forEach(link => {
+          const li = document.createElement('li');
+          li.innerHTML = `
+            <a href="${link.url}" target="_blank">${link.title}</a>
+            <p>${link.description}</p>
+            <div class="tags">${link.tags.map(tag => `<span class="tag">${tag}</span>`).join('')}</div>
+          `;
+          linkList.appendChild(li);
+        });
+    }
+
+    function renderTags() {
+      const allTags = [...new Set(links.flatMap(link => link.tags))];
+      tagFilters.innerHTML = '<strong>Filter by tag:</strong> ';
+      allTags.forEach(tag => {
+        const button = document.createElement('button');
+        button.textContent = tag;
+        button.className = selectedTag === tag ? 'tag active' : 'tag';
+        button.onclick = () => {
+          selectedTag = selectedTag === tag ? null : tag;
+          renderTags();
+          renderLinks();
+        };
+        tagFilters.appendChild(button);
+      });
+    }
+
+    renderTags();
+    renderLinks();
+  </script>
+</body>
+</html>
