@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>iNaturalist City Nature Challallenge Luxembourg Participants</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+ body{font-family:Arial,sans-serif;margin:0;background:#f4f4f4;}
+ header{padding:1rem;color:white;text-align:center;background-size:cover;background-position:center;}
+ #controls{display:flex;flex-wrap:wrap;gap:1rem;padding:1rem;align-items:center;background:white;}
+ table{width:100%;border-collapse:collapse;margin:1rem 0;background:white;}
+ th,td{border:1px solid #ddd;padding:0.5rem;text-align:left;}
+ th{background:#eee;cursor:pointer;}
+ #column-toggles{display:flex;flex-wrap:wrap;gap:1rem;margin:1rem;}
+ button{padding:0.5rem 1rem;cursor:pointer;background:#5D9DBB;color:white;border:none;border-radius:5px;}
+ button:hover{background:#498aa3;}
+ .chart-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:1rem;padding:1rem;}
+ .chart-item{background:white;border-radius:8px;padding:1rem;box-shadow:0 2px 4px rgba(0,0,0,0.1);} 
+</style>
+</head>
+<body>
+<header id="header"><h1 id="project-title">City Nature Challallenge Participants</h1></header>
+<div id="yearly-charts" class="chart-grid"></div>
+<!-- move controls below charts -->
+<div id="controls">
+<label for="project-year">Select Year:</label>
+<select id="project-year">
+<option value="227286">2025</option><option value="185008">2024</option><option value="153723">2023</option><option value="120109">2022</option><option value="93152">2021</option><option value="61821">2020</option><option value="28084">2019</option>
+</select>
+<a id="project-link" href="#" target="_blank"><button>Visit City Nature Challallenge Page</button></a>
+<label style="margin-left:1rem;display:flex;align-items:center;gap:0.3rem;">
+<input type="checkbox" id="chart-toggle"/> Use bar charts
+</label>
+</div>
+<div id="column-toggles"></div>
+<table id="observer-table"><thead></thead><tbody></tbody></table>
+<script>
+const table=document.getElementById("observer-table"),tbody=table.querySelector("tbody"),thead=table.querySelector("thead"),projectSelect=document.getElementById("project-year"),header=document.getElementById("header"),projectTitle=document.getElementById("project-title"),projectLink=document.getElementById("project-link"),columnToggleDiv=document.getElementById("column-toggles"),chartToggle=document.getElementById("chart-toggle");
+let lastData=[],columns=[],sortColumn=null,sortAsc=true,chartType='doughnut';
+chartToggle.onchange=()=>{chartType=chartToggle.checked?'bar':'doughnut';renderYearlyCharts();};
+const allProjectIds={"2019":"28084","2020":"61821","2021":"93152","2022":"120109","2023":"153723","2024":"185008","2025":"227286"};
+const dateDiffInDays=(s,e)=>Math.floor((new Date(e)-new Date(s))/(1000*60*60*24));
+// ===== Table helpers =====
+const renderTable=()=>{thead.innerHTML="";tbody.innerHTML="";const hr=document.createElement("tr");columns.forEach(col=>{const th=document.createElement("th");th.textContent=col.label;th.onclick=()=>{sortColumn===col.key?sortAsc=!sortAsc:(sortColumn=col.key,sortAsc=true);lastData.sort((a,b)=>{const A=a[col.key],B=b[col.key];const date=/^\d{4}-\d{2}-\d{2}$/;if(date.test(A)&&date.test(B))return sortAsc?new Date(A)-new Date(B):new Date(B)-new Date(A);if(!isNaN(A)&&!isNaN(B))return sortAsc?A-B:B-A;return sortAsc?(''+A).localeCompare(B):(''+B).localeCompare(A);});renderTable();};hr.appendChild(th);});thead.appendChild(hr);lastData.forEach(r=>{const tr=document.createElement("tr");columns.forEach(c=>{const td=document.createElement("td");const v=r[c.key];td.innerHTML=c.key==='login'?`<a href='https://inaturalist.lu/users/${v}' target='_blank'>${v}</a>`:(v??"");tr.appendChild(td);});tbody.appendChild(tr);});};
+const setupColumnToggles=ac=>{columnToggleDiv.innerHTML="";ac.forEach(c=>{const label=document.createElement("label");const cb=document.createElement("input");cb.type="checkbox";cb.checked=true;cb.id=`col-${c.key}`;cb.onchange=()=>{columns=ac.filter(k=>document.getElementById(`col-${k.key}`).checked);renderTable();};label.appendChild(cb);label.appendChild(document.createTextNode(` ${c.label}`));columnToggleDiv.appendChild(label);});};
+// ===== Participation map cache =====
+let globalParticipationMap=null;
+async function buildParticipationMap(){if(globalParticipationMap)return globalParticipationMap;const map={};await Promise.all(Object.values(allProjectIds).map(async id=>{const resp=await fetch(`https://api.inaturalist.org/v2/observations/observers?project_id=${id}&fields=user.login&per_page=200`).then(r=>r.json());resp.results.forEach(u=>{const l=u.user.login;map[l]=(map[l]||0)+1;});}));return globalParticipationMap=map;}
+// ===== Charts =====
+function gradientColor(index,total){const light=80, dark=40;const step=(dark-light)/(total-1);const l=light+step*(index-1);return `hsl(200, 70%, ${l}%)`;}
+async function renderYearlyCharts(){const container=document.getElementById("yearly-charts");container.innerHTML="";const participationMap=await buildParticipationMap();
+ for(const [year,projId] of Object.entries(allProjectIds)){
+   const obsResp=await fetch(`https://api.inaturalist.org/v2/observations/observers?project_id=${projId}&fields=observation_count,user.login&per_page=200`).then(r=>r.json());
+   const obsTotals={},userCounts={};obsResp.results.forEach(u=>{const login=u.user.login;const bucket=participationMap[login]||1;obsTotals[bucket]=(obsTotals[bucket]||0)+u.observation_count;userCounts[bucket]=(userCounts[bucket]||0)+1;});
+   const buckets=Object.keys(obsTotals).sort((a,b)=>a-b);
+   const obsData=buckets.map(b=>obsTotals[b]),usrData=buckets.map(b=>userCounts[b]);
+   let obsPercent=obsData,usrPercent=usrData;
+   if(chartType==='bar'){
+     const obsTotal=obsData.reduce((a,b)=>a+b,0),usrTotal=usrData.reduce((a,b)=>a+b,0);
+     obsPercent=obsData.map(v=>+((v/obsTotal)*100).toFixed(1));
+     usrPercent=usrData.map(v=>+((v/usrTotal)*100).toFixed(1));
+   }
+   const labels=buckets.map(b=>`${b} CNC${b==1?'':'s'}`);
+   const wrapper=document.createElement("div");wrapper.className="chart-item";
+   wrapper.appendChild(document.createElement("h3")).textContent=`City Nature Challange ${year}`;
+   const canvas=document.createElement("canvas");wrapper.appendChild(canvas);container.appendChild(wrapper);
+   const baseColors=buckets.map((b,i)=>gradientColor(i+1,buckets.length));
+   const datasets=chartType==='doughnut'?
+     [
+       {label:'Observations',data:obsData,backgroundColor:baseColors,hoverOffset:4},
+       {label:'Participants',data:usrData,backgroundColor:baseColors.map(c=>c.replace('% ','% / 1.2)')).map(c=>c.replace('hsl','hsla').replace('%)','%,0.5)')),hoverOffset:4}
+     ]:
+     [
+       {label:'Observations %',data:obsPercent,backgroundColor:baseColors},
+       {label:'Participants %',data:usrPercent,backgroundColor:baseColors.map(c=>c.replace('% ','% / 1.2)')).map(c=>c.replace('hsl','hsla').replace('%)','%,0.5)'))}
+     ];
+   new Chart(canvas.getContext('2d'),{
+     type:chartType,
+     data:{labels,datasets},
+     options:{
+       responsive:true,
+       plugins:{title:{display:true,text:`Observations & Users by Participation Bucket – ${year}`},legend:{display:false}},
+       cutout:'50%',
+       indexAxis:'x',
+       scales: chartType==='bar'?{y:{beginAtZero:true,max:100,ticks:{callback:v=>v+"%"}}}:{}}
+   });
+ }
+}
+// ===== Load project & table =====
+async function loadProjectData(projectId){const [projectResp,observerResp]=await Promise.all([
+ fetch(`https://api.inaturalist.org/v2/projects/${projectId}?fields=all`).then(r=>r.json()),
+ fetch(`https://api.inaturalist.org/v2/observations/observers?project_id=${projectId}&order=desc&fields=observation_count,species_count,user.id,user.name,user.created_at,user.identifications_count,user.observations_count,user.species_count,user.login&order_by=observation_count`).then(r=>r.json())]);
+ const year=Object.keys(allProjectIds).find(y=>allProjectIds[y]===projectId);
+ const partMap=await buildParticipationMap();
+ const project=projectResp.results[0];const obsData=observerResp.results;const projectStartRaw=project.rule_preferences.find(p=>p.field==='d1')?.value;const projectStart=projectStartRaw?new Date(projectStartRaw).toISOString().split('T')[0]:'';
+ projectTitle.textContent=`City Nature Challange ${year}`;
+ header.style.backgroundImage=`url(${project.header_image_url})`;header.style.backgroundColor=project.banner_color||'#444';projectLink.href=`https://inaturalist.lu/projects/${projectId}`;
+ lastData=obsData.map(u=>{const usr=u.user;const created=new Date(usr.created_at).toISOString().split('T')[0];const days=projectStart?dateDiffInDays(created,projectStart):'';const projObs=u.observation_count,totalObs=usr.observations_count;return{login:usr.login,name:usr.name||'',observation_count:projObs,observations_count:totalObs,obs_ratio:totalObs?((projObs/totalObs)*100).toFixed(1):'0',species_count:usr.species_count,identifications_count:usr.identifications_count,created_at:created,project_start:projectStart,days_since_creation:days,participation:partMap[usr.login]||1};});
+ const cols=[
+  {key:'login',label:'Username'},
+  {key:'name',label:'Name'},
+  {key:'observation_count',label:`City Nature Challange ${year} Observations`},
+  {key:'observations_count',label:'Total Observations'},
+  {key:'obs_ratio',label:`% CNC ${year} / Total Obs`},
+  {key:'species_count',label:'Species Count'},
+  {key:'identifications_count',label:'Identifications Count'},
+  {key:'created_at',label:'Account Created'},
+  {key:'project_start',label:`CNC ${year} Start Date`},
+  {key:'days_since_creation',label:'Days Since Account Creation'},
+  {key:'participation',label:'CNCs Participated In'}
+];
+columns=[...cols];
+setupColumnToggles(cols);
+renderTable();
+renderYearlyCharts();
+}
+
+// initial load
+projectSelect.onchange=e=>loadProjectData(e.target.value);
+loadProjectData(projectSelect.value);
+</script>
+</body>
+</html>

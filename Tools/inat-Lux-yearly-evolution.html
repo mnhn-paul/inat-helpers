@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>iNaturalist Observations in Luxembourg</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <h1>iNaturalist Observations in Luxembourg</h1>
+
+  <h2>Jan 1 to Today - Total Observations Per Year</h2>
+  <canvas id="observationChart" width="400" height="200"></canvas>
+
+  <h2>Cumulative Weekly Timeline - Jan 1 to Today (All Years)</h2>
+  <canvas id="timelineChart" width="800" height="400"></canvas>
+
+  <script>
+    const placeId = 120582;
+
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const monthDay = `${month}-${day}`;
+    const years = Array.from({ length: 8 }, (_, i) => currentYear - i);
+
+    const d1 = (year) => `${year}-01-01`;
+    const d2 = (year) => `${year}-${monthDay}`;
+
+    // ---------- CHART 1: TOTAL OBSERVATIONS ----------
+    async function fetchObservationCount(year) {
+      const url = new URL('https://api.inaturalist.org/v1/observations');
+      url.search = new URLSearchParams({
+        place_id: placeId,
+        d1: d1(year),
+        d2: d2(year),
+        per_page: 1
+      });
+
+      try {
+        const res = await fetch(url);
+        const json = await res.json();
+        return json.total_results || 0;
+      } catch (err) {
+        console.error(`Error fetching total for ${year}`, err);
+        return 0;
+      }
+    }
+
+    async function plotObservationChart() {
+      const observationCounts = await Promise.all(years.map(fetchObservationCount));
+
+      const ctx = document.getElementById('observationChart').getContext('2d');
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: years,
+          datasets: [{
+            label: `Observations from Jan 1 to ${monthDay}`,
+            data: observationCounts,
+            backgroundColor: 'skyblue',
+            borderColor: 'rgba(75, 192, 192, 1)',
+            borderWidth: 1
+          }]
+        },
+        options: {
+          scales: {
+            y: {
+              beginAtZero: true
+            }
+          }
+        }
+      });
+    }
+
+    // ---------- CHART 2: WEEKLY HISTOGRAM (CUMULATIVE) ----------
+    async function fetchHistogramData(year) {
+      const url = new URL('https://api.inaturalist.org/v1/observations/histogram');
+      url.search = new URLSearchParams({
+        place_id: placeId,
+        d1: d1(year),
+        d2: d2(year),
+        interval: 'week',
+        date_field: 'observed'
+      });
+
+      try {
+        const res = await fetch(url);
+        const json = await res.json();
+        return json.results.week || {};
+      } catch (err) {
+        console.error(`Error fetching histogram for ${year}`, err);
+        return {};
+      }
+    }
+
+    function getColor(index) {
+      const colors = [
+        'red', 'blue', 'green', 'orange', 'purple', 'brown', 'teal', 'darkgray'
+      ];
+      return colors[index % colors.length];
+    }
+
+    async function plotTimelineChart() {
+      const datasets = [];
+      let chartLabels = [];
+
+      for (let i = 0; i < years.length; i++) {
+        const year = years[i];
+        const weekData = await fetchHistogramData(year);
+        const entries = Object.entries(weekData).sort(([a], [b]) => new Date(a) - new Date(b));
+
+        const labels = entries.map(([week]) => week);
+        const rawValues = entries.map(([_, count]) => count);
+
+        // Calculate cumulative values
+        const cumulativeValues = rawValues.reduce((acc, val, index) => {
+          acc.push((acc[index - 1] || 0) + val);
+          return acc;
+        }, []);
+
+        if (labels.length > chartLabels.length) {
+          chartLabels = labels;
+        }
+
+        datasets.push({
+          label: year.toString(),
+          data: cumulativeValues,
+          borderColor: getColor(i),
+          backgroundColor: getColor(i),
+          fill: false,
+          tension: 0.3
+        });
+      }
+
+      const ctx = document.getElementById('timelineChart').getContext('2d');
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: chartLabels,
+          datasets: datasets
+        },
+        options: {
+          responsive: true,
+          interaction: {
+            mode: 'index',
+            intersect: false
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: 'Cumulative Observations'
+              }
+            },
+            x: {
+              title: {
+                display: true,
+                text: 'Week Start Date'
+              },
+              ticks: {
+                maxTicksLimit: 10
+              }
+            }
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: (ctx) => `${ctx.dataset.label}: ${ctx.formattedValue} observations`
+              }
+            }
+          }
+        }
+      });
+    }
+
+    // ----------- RUN BOTH CHARTS ------------
+    plotObservationChart();
+    plotTimelineChart();
+  </script>
+</body>
+</html>

@@ -138,6 +138,11 @@
     <button onclick="applyFilters()">Apply Filters</button>
   </div>
 
+  <label style="display: block; margin-top: 0.5rem;">
+    <input type="checkbox" id="toggleWMS" />
+    Show Geoportail WMS Layer
+  </label>
+
   <div id="map"></div>
 
   <div id="chartContainer">
@@ -145,15 +150,15 @@
   </div>
 
   <table id="resultsTable">
- <thead>
-  <tr>
-    <th onclick="sortTable(0)">ZPIN Name</th>
-    <th>Links</th>
-    <th onclick="sortTable(1)">Observations</th>
-    <th onclick="sortTable(2)">Priority</th>
-    <th onclick="sortTable(3)">Issue</th>
-  </tr>
-</thead>
+    <thead>
+      <tr>
+        <th onclick="sortTable(0)">ZPIN Name</th>
+        <th>Links</th>
+        <th onclick="sortTable(1)">Observations</th>
+        <th onclick="sortTable(2)">Priority</th>
+        <th onclick="sortTable(3)">Issue</th>
+      </tr>
+    </thead>
     <tbody></tbody>
   </table>
 
@@ -207,6 +212,21 @@
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
+    const wmsLayer = L.tileLayer.wms("https://wms.geoportail.lu/public_map_layers/service", {
+      layers: '804',
+      format: 'image/png',
+      transparent: true,
+      attribution: "© Geoportail Luxembourg"
+    });
+
+    document.getElementById('toggleWMS').addEventListener('change', function () {
+      if (this.checked) {
+        wmsLayer.addTo(map);
+      } else {
+        map.removeLayer(wmsLayer);
+      }
+    });
+
     function getColor(obs) {
       if (obs <= 5) return 'red';
       if (obs <= 20) return 'orange';
@@ -225,31 +245,30 @@
       markerMap[zone.inatID] = marker;
     }
 
-function addRow(zone, issue = '') {
-  const row = document.createElement('tr');
+    function addRow(zone, issue = '') {
+      const row = document.createElement('tr');
 
-  const obsLink = zone.observations != null
-    ? `<a href="https://inaturalist.lu/observations?place_id=${zone.inatID}&user_id=${selectedUser}" target="_blank">${zone.observations}</a>`
-    : '-';
+      const obsLink = zone.observations != null
+        ? `<a href="https://inaturalist.lu/observations?place_id=${zone.inatID}&user_id=${selectedUser}" target="_blank">${zone.observations}</a>`
+        : '-';
 
-  const linksCell = `
-    <a href="https://inaturalist.lu/observations?place_id=${zone.inatID}" target="_blank" title="All observations in this zone">🐦</a>
-    &nbsp;
-    <a href="https://www.wikidata.org/wiki/${zone.wikidataID}" target="_blank" title="View Wikidata entry">🧠</a>
-  `;
+      const linksCell = `
+        <a href="https://inaturalist.lu/observations?place_id=${zone.inatID}" target="_blank" title="All observations in this zone">🐦</a>
+        &nbsp;
+        <a href="https://www.wikidata.org/wiki/${zone.wikidataID}" target="_blank" title="View Wikidata entry">🧠</a>
+      `;
 
-  row.innerHTML = `
-    <td>${zone.name}</td>
-    <td>${linksCell}</td>
-    <td>${obsLink}</td>
-    <td>${zone.priority ?? '-'}</td>
-    <td>${issue}</td>
-  `;
+      row.innerHTML = `
+        <td>${zone.name}</td>
+        <td>${linksCell}</td>
+        <td>${obsLink}</td>
+        <td>${zone.priority ?? '-'}</td>
+        <td>${issue}</td>
+      `;
 
-  if (!issue) row.addEventListener('click', () => highlightMarker(zone.inatID));
-  document.querySelector('#resultsTable tbody').appendChild(row);
-}
-
+      if (!issue) row.addEventListener('click', () => highlightMarker(zone.inatID));
+      document.querySelector('#resultsTable tbody').appendChild(row);
+    }
 
     async function fetchINatObservations(placeID, userLogin, retries = 5, delay = 500) {
       const url = `https://api.inaturalist.org/v2/observations?place_id=${placeID}&user_id=${userLogin}&page=1&per_page=1&order=desc&order_by=created_at`;

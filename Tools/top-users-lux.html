@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iNaturalist Observers</title>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        table, th, td {
+            border: 1px solid black;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f4f4f4;
+        }
+        button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <h1>iNaturalist Observers</h1>
+    <table>
+        <thead>
+            <tr>
+                <th>User ID</th>
+                <th>Name</th>
+                <th>Login</th>
+                <th>ORCID</th>
+                <th>Observation Count</th>
+                <th>Species Count</th>
+                <th>Site ID</th>
+            </tr>
+        </thead>
+        <tbody id="observersTableBody">
+            <!-- Rows will be dynamically added here -->
+        </tbody>
+    </table>
+
+    <button onclick="copyTableToClipboard()">Copy Table to Clipboard</button>
+
+    <script>
+        const apiUrl = "https://api.inaturalist.org/v2/observations/observers?place_id=8147&page=1&per_page=100&order=desc&fields=observation_count%2Cspecies_count%2Cuser.id%2Cuser.name%2Cuser.login%2Cuser.orcid%2Cuser.observations_count%2Cuser.site_id&order_by=observation_count";
+
+        async function fetchAndDisplayObservers() {
+            try {
+                const response = await fetch(apiUrl);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                const data = await response.json();
+
+                const tableBody = document.getElementById('observersTableBody');
+
+                data.results.forEach(observer => {
+                    const row = document.createElement('tr');
+
+                    const userIdCell = document.createElement('td');
+                    userIdCell.textContent = observer.user.id;
+                    row.appendChild(userIdCell);
+
+                    const nameCell = document.createElement('td');
+                    nameCell.textContent = observer.user.name || "";
+                    row.appendChild(nameCell);
+
+                    const loginCell = document.createElement('td');
+                    loginCell.textContent = observer.user.login;
+                    row.appendChild(loginCell);
+
+                    const orcidCell = document.createElement('td');
+                    orcidCell.textContent = observer.user.orcid || "";
+                    row.appendChild(orcidCell);
+
+                    const observationCountCell = document.createElement('td');
+                    observationCountCell.textContent = observer.observation_count;
+                    row.appendChild(observationCountCell);
+
+                    const speciesCountCell = document.createElement('td');
+                    speciesCountCell.textContent = observer.species_count;
+                    row.appendChild(speciesCountCell);
+
+                    const siteIdCell = document.createElement('td');
+                    if (observer.user.site_id === 26) {
+                        siteIdCell.textContent = "iNaturalistLU";
+                    } else if (observer.user.site_id === 1) {
+                        siteIdCell.textContent = "iNaturalist";
+                    } else {
+                        siteIdCell.textContent = observer.user.site_id || "";
+                    }
+                    row.appendChild(siteIdCell);
+
+                    tableBody.appendChild(row);
+                });
+            } catch (error) {
+                console.error("Error fetching observers:", error);
+            }
+        }
+
+        function copyTableToClipboard() {
+            const table = document.querySelector("table");
+            const range = document.createRange();
+            range.selectNode(table);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+
+            try {
+                document.execCommand("copy");
+                alert("Table copied to clipboard");
+            } catch (err) {
+                console.error("Failed to copy table: ", err);
+            }
+
+            selection.removeAllRanges();
+        }
+
+        // Fetch and display data when the page loads
+        window.onload = fetchAndDisplayObservers;
+    </script>
+</body>
+</html>
