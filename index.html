@@ -5,6 +5,40 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Tool Index</title>
   <link rel="stylesheet" href="assets/style.css">
+  <style>
+    /* Optional: embedded styles if not added in assets/style.css */
+    .special-links {
+      background-color: #f5f5e5; /* Soft beige-yellow */
+      border-left: 5px solid #d4af37; /* Gold accent */
+      padding: 1em;
+      margin-top: 2em;
+    }
+
+    .tool.special a {
+      color: #8a4b08; /* Warm brown tone */
+      font-weight: bold;
+    }
+
+    .tool-category {
+      margin-bottom: 2em;
+    }
+
+    .tool {
+      margin-bottom: 1em;
+    }
+
+    .tool a {
+      display: block;
+      font-size: 1.2em;
+      color: #0066cc;
+      text-decoration: none;
+    }
+
+    .description {
+      font-size: 0.9em;
+      color: #333;
+    }
+  </style>
 </head>
 <body>
   <h1>iNaturalist Tool Library</h1>
@@ -25,54 +59,49 @@
         description: "Tool that helps a user identify how many observations they have already contributed from ZPIN protected area in Luxembourg and which ones were not yet visited."
       },
       {
-      name: "Top users in Luxembourg",
-      file: "top-users-lux.html",
-      category: "Users specific tool",
-      description: "Gives a simple list of the op users in Luxembourg."
+        name: "Top users in Luxembourg",
+        file: "top-users-lux.html",
+        category: "Users specific tool",
+        description: "Gives a simple list of the op users in Luxembourg."
       },
       {
-      name: "Yearly species observation histogram",
-      file: "species-yearly-histogram.html",
-      category: "Luxembourg specific tool",
-      description: "Lookup a species name to generate yearly histograms of number of observations."
+        name: "Yearly species observation histogram",
+        file: "species-yearly-histogram.html",
+        category: "Luxembourg specific tool",
+        description: "Lookup a species name to generate yearly histograms of number of observations."
       },
       {
-      name: "Yearly observation histogram Luxembourg",
-      file: "inat-Lux-yearly-evolution.html",
-      category: "Luxembourg specific tool",
-      description: "Check the currently yearly evolution of observations share from Luxemoburg on iNaturalist."
+        name: "Yearly observation histogram Luxembourg",
+        file: "inat-Lux-yearly-evolution.html",
+        category: "Luxembourg specific tool",
+        description: "Check the currently yearly evolution of observations share from Luxemoburg on iNaturalist."
       },
       {
-      name: "CNC 2025 user overview",
-      file: "CNC2025-users.html",
-      category: "CNC specific tool",
-      description: "Get an overview of the CNC 2025 user activity."
+        name: "CNC 2025 user overview",
+        file: "CNC2025-users.html",
+        category: "CNC specific tool",
+        description: "Get an overview of the CNC 2025 user activity."
       },
       {
-      name: "CNC quick data overview",
-      file: "CNC-data-overview.html",
-      category: "CNC specific tool",
-      description: "Get an quick overview of the CNC data."
+        name: "CNC quick data overview",
+        file: "CNC-data-overview.html",
+        category: "CNC specific tool",
+        description: "Get an quick overview of the CNC data."
       },
       {
-      name: "Places",
-      file: "places.html",
-      category: "Other",
-      description: "testing tool."
-      },
-      {
-      name: "Usefull links",
-      file: "pages/links.html",
-      category: "Other",
-      description: "Collection of usefull links."
+        name: "Places",
+        file: "places.html",
+        category: "Other",
+        description: "testing tool."
       }
-      // Add more tools like this
-      // {
-      //   name: "Tool Name",
-      //   file: "filename.html",
-      //   category: "Category Name",
-      //   description: "Brief description of what the tool does."
-      // }
+    ];
+
+    const specialLinks = [
+      {
+        name: "Useful links",
+        file: "pages/links.html",
+        description: "Collection of useful links."
+      }
     ];
 
     // Group tools by category
@@ -111,6 +140,33 @@
 
       container.appendChild(section);
     }
+
+    // Add separate section for useful links
+    const linksSection = document.createElement("div");
+    linksSection.className = "tool-category special-links";
+
+    const linksHeading = document.createElement("h2");
+    linksHeading.textContent = "Useful Resources";
+    linksSection.appendChild(linksHeading);
+
+    specialLinks.forEach(linkObj => {
+      const linkDiv = document.createElement("div");
+      linkDiv.className = "tool special";
+
+      const link = document.createElement("a");
+      link.href = linkObj.file;
+      link.textContent = linkObj.name;
+
+      const desc = document.createElement("div");
+      desc.className = "description";
+      desc.textContent = linkObj.description;
+
+      linkDiv.appendChild(link);
+      linkDiv.appendChild(desc);
+      linksSection.appendChild(linkDiv);
+    });
+
+    container.appendChild(linksSection);
   </script>
 </body>
 </html>
