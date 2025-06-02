@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iNaturalist Place Search</title>
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <h1>iNaturalist Place Search</h1>
+    <input type="text" id="searchInput" placeholder="Search for a place...">
+    <button onclick="searchPlaces()">Search</button>
+    <div id="results"></div>
+
+    <script>
+        async function searchPlaces() {
+            const query = document.getElementById('searchInput').value;
+            const apiUrl = `https://api.inaturalist.org/v2/places?q=${query}`;
+
+            try {
+                const response = await fetch(apiUrl);
+                const data = await response.json();
+                displayResults(data.results);
+            } catch (error) {
+                console.error('Error fetching data:', error);
+            }
+        }
+
+        function displayResults(places) {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '';
+
+            if (places.length === 0) {
+                resultsDiv.innerHTML = '<p>No results found.</p>';
+                return;
+            }
+
+            places.forEach(place => {
+                const placeDiv = document.createElement('div');
+                placeDiv.className = 'place';
+                placeDiv.innerHTML = `
+                    <h2>${place.name}</h2>
+                    <p>ID: ${place.id}</p>
+                    <p>Place Type: ${place.place_type}</p>
+                `;
+                resultsDiv.appendChild(placeDiv);
+            });
+        }
+    </script>
+</body>
+</html>
