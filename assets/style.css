@@ -64,6 +64,7 @@ h1, h2 {
 .top-menu a:hover {
   text-decoration: underline;
 }
+
 /* Tag styles for filtering */
 .tag {
   display: inline-block;
@@ -104,4 +105,25 @@ h1, h2 {
   h1 {
     font-size: 1.5rem;
   }
+}
+
+/* Special styling for Useful Links section */
+.special-links {
+  background-color: #fefae0; /* Warm light beige */
+  border-left: 5px solid #d4af37; /* Gold accent */
+  padding: 1rem;
+  margin-top: 2rem;
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+/* Special tool link appearance */
+.tool.special a {
+  color: #8a4b08; /* Warm brown */
+  font-weight: bold;
+}
+
+.tool.special a:hover {
+  text-decoration: underline;
+  color: #a85d0d; /* Slightly brighter brown on hover */
 }
