@@ -64,3 +64,44 @@ h1, h2 {
 .top-menu a:hover {
   text-decoration: underline;
 }
+/* Tag styles for filtering */
+.tag {
+  display: inline-block;
+  background: #eee;
+  padding: 0.3rem 0.6rem;
+  margin: 0.2rem;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  border: 1px solid #ccc;
+}
+
+.tag:hover {
+  background: #ddd;
+}
+
+.tag.active {
+  background: #007acc;
+  color: white;
+  border-color: #007acc;
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+  body {
+    padding: 1rem;
+  }
+
+  .tool {
+    padding: 1rem;
+  }
+
+  .tag {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.5rem;
+  }
+
+  h1 {
+    font-size: 1.5rem;
+  }
+}
