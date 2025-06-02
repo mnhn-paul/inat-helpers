@@ -10,13 +10,13 @@
 
   <div class="top-menu">
     <a href="#">Home</a>
-    <!-- Add other menu links if needed -->
+    <!-- Add more menu links here if needed -->
   </div>
 
   <h1>usefull links</h1>
 
   <div id="tag-filters" style="text-align: center; margin-bottom: 1.5rem;">
-    <!-- Tag filters will be added dynamically -->
+    <!-- Tag filters will be inserted here -->
   </div>
 
   <div id="link-list">
@@ -59,6 +59,7 @@
           div.innerHTML = `
             <a href="${link.url}" target="_blank">${link.title}</a>
             <div class="description">${link.description}</div>
+            <div class="url"><code>${link.url}</code></div>
             <div class="tags" style="margin-top: 0.5rem;">
               ${link.tags.map(tag => `<span class="tag" data-tag="${tag}">${tag}</span>`).join(' ')}
             </div>
@@ -87,5 +88,6 @@
     renderTags();
     renderLinks();
   </script>
+
 </body>
 </html>
