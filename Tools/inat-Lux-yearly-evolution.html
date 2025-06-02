@@ -5,33 +5,61 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>iNaturalist Observations in Luxembourg</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 1rem;
+    }
+
+    .top-menu {
+      margin-bottom: 1rem;
+    }
+
+    .chart-container {
+      width: 100%;
+      max-width: 1000px;
+      margin: 0 auto 2rem;
+      aspect-ratio: 2 / 1; /* Maintains a consistent ratio for height */
+    }
+
+    canvas {
+      width: 100% !important;
+      height: 100% !important;
+    }
+
+    h1, h2 {
+      text-align: center;
+    }
+  </style>
 </head>
 <body>
-    <div class="top-menu">
-        <a href="../index.html">← Back to Home</a>
-    </div>
+  <div class="top-menu">
+    <a href="../index.html">← Back to Home</a>
+  </div>
+
   <h1>iNaturalist Observations in Luxembourg</h1>
 
-  <h2>Jan 1 to Today - Total Observations Per Year</h2>
-  <canvas id="observationChart" width="400" height="200"></canvas>
+  <div class="chart-container">
+    <h2>Jan 1 to Today - Total Observations Per Year</h2>
+    <canvas id="observationChart"></canvas>
+  </div>
 
-  <h2>Cumulative Weekly Timeline - Jan 1 to Today (All Years)</h2>
-  <canvas id="timelineChart" width="800" height="400"></canvas>
+  <div class="chart-container">
+    <h2>Cumulative Weekly Timeline - Jan 1 to Today (All Years)</h2>
+    <canvas id="timelineChart"></canvas>
+  </div>
 
   <script>
     const placeId = 120582;
-
     const today = new Date();
     const currentYear = today.getFullYear();
     const month = String(today.getMonth() + 1).padStart(2, '0');
     const day = String(today.getDate()).padStart(2, '0');
     const monthDay = `${month}-${day}`;
     const years = Array.from({ length: 8 }, (_, i) => currentYear - i);
-
     const d1 = (year) => `${year}-01-01`;
     const d2 = (year) => `${year}-${monthDay}`;
 
-    // ---------- CHART 1: TOTAL OBSERVATIONS ----------
     async function fetchObservationCount(year) {
       const url = new URL('https://api.inaturalist.org/v1/observations');
       url.search = new URLSearchParams({
@@ -53,8 +81,8 @@
 
     async function plotObservationChart() {
       const observationCounts = await Promise.all(years.map(fetchObservationCount));
-
       const ctx = document.getElementById('observationChart').getContext('2d');
+
       new Chart(ctx, {
         type: 'bar',
         data: {
@@ -68,6 +96,7 @@
           }]
         },
         options: {
+          responsive: true,
           scales: {
             y: {
               beginAtZero: true
@@ -77,7 +106,6 @@
       });
     }
 
-    // ---------- CHART 2: WEEKLY HISTOGRAM (CUMULATIVE) ----------
     async function fetchHistogramData(year) {
       const url = new URL('https://api.inaturalist.org/v1/observations/histogram');
       url.search = new URLSearchParams({
@@ -99,9 +127,7 @@
     }
 
     function getColor(index) {
-      const colors = [
-        'red', 'blue', 'green', 'orange', 'purple', 'brown', 'teal', 'darkgray'
-      ];
+      const colors = ['red', 'blue', 'green', 'orange', 'purple', 'brown', 'teal', 'darkgray'];
       return colors[index % colors.length];
     }
 
@@ -117,7 +143,6 @@
         const labels = entries.map(([week]) => week);
         const rawValues = entries.map(([_, count]) => count);
 
-        // Calculate cumulative values
         const cumulativeValues = rawValues.reduce((acc, val, index) => {
           acc.push((acc[index - 1] || 0) + val);
           return acc;
@@ -138,6 +163,7 @@
       }
 
       const ctx = document.getElementById('timelineChart').getContext('2d');
+
       new Chart(ctx, {
         type: 'line',
         data: {
@@ -179,7 +205,6 @@
       });
     }
 
-    // ----------- RUN BOTH CHARTS ------------
     plotObservationChart();
     plotTimelineChart();
   </script>
