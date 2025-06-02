@@ -7,16 +7,20 @@
   <link rel="stylesheet" href="../assets/style.css" />
 </head>
 <body>
-  <div class="container">
-    <h1>usefull links</h1>
 
-    <div id="tag-filters" class="tag-filters">
-      <!-- Tag filter buttons will be inserted here -->
-    </div>
+  <div class="top-menu">
+    <a href="#">Home</a>
+    <!-- Add other menu links if needed -->
+  </div>
 
-    <ul id="link-list">
-      <!-- Link entries will be rendered here -->
-    </ul>
+  <h1>usefull links</h1>
+
+  <div id="tag-filters" style="text-align: center; margin-bottom: 1.5rem;">
+    <!-- Tag filters will be added dynamically -->
+  </div>
+
+  <div id="link-list">
+    <!-- Link cards will be rendered here -->
   </div>
 
   <script>
@@ -50,13 +54,16 @@
       links
         .filter(link => !selectedTag || link.tags.includes(selectedTag))
         .forEach(link => {
-          const li = document.createElement('li');
-          li.innerHTML = `
+          const div = document.createElement('div');
+          div.className = 'tool';
+          div.innerHTML = `
             <a href="${link.url}" target="_blank">${link.title}</a>
-            <p>${link.description}</p>
-            <div class="tags">${link.tags.map(tag => `<span class="tag">${tag}</span>`).join('')}</div>
+            <div class="description">${link.description}</div>
+            <div class="tags" style="margin-top: 0.5rem;">
+              ${link.tags.map(tag => `<span class="tag" data-tag="${tag}">${tag}</span>`).join(' ')}
+            </div>
           `;
-          linkList.appendChild(li);
+          linkList.appendChild(div);
         });
     }
 
@@ -67,6 +74,7 @@
         const button = document.createElement('button');
         button.textContent = tag;
         button.className = selectedTag === tag ? 'tag active' : 'tag';
+        button.style.margin = '0 5px 5px 0';
         button.onclick = () => {
           selectedTag = selectedTag === tag ? null : tag;
           renderTags();
