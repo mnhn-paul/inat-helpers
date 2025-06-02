@@ -19,7 +19,17 @@
       width: 100%;
       max-width: 1000px;
       margin: 0 auto 2rem;
-      aspect-ratio: 2 / 1; /* Maintains a consistent ratio for height */
+      aspect-ratio: 2 / 1; /* Default landscape */
+    }
+
+    .chart-container.timeline {
+      aspect-ratio: 2 / 1; /* Desktop default for second chart */
+    }
+
+    @media (max-width: 600px) {
+      .chart-container.timeline {
+        aspect-ratio: 2 / 3; /* Portrait on mobile */
+      }
     }
 
     canvas {
@@ -44,7 +54,7 @@
     <canvas id="observationChart"></canvas>
   </div>
 
-  <div class="chart-container">
+  <div class="chart-container timeline">
     <h2>Cumulative Weekly Timeline - Jan 1 to Today (All Years)</h2>
     <canvas id="timelineChart"></canvas>
   </div>
