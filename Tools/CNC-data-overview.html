@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iNaturalist Project</title>
+    <style>
+        body {
+            text-align: center;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        img {
+            max-width: 50%;
+            height: auto;
+        }
+        .title {
+            font-size: 24px;
+            margin-top: 10px;
+        }
+        .error {
+            color: red;
+            font-size: 18px;
+            margin-top: 20px;
+        }
+        table {
+            width: 60%;
+            margin: 20px auto;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 8px 12px;
+            text-align: left;
+            border: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .total-observations, .total-identifiers {
+            font-size: 20px;
+            margin-top: 20px;
+        }
+        .table-title {
+            font-size: 26px;
+            margin-top: 20px;
+        }
+        .species-name {
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div id="content">
+        <p>Loading project data...</p>
+    </div>
+
+    <div id="observations">
+        <p>Loading user observations...</p>
+    </div>
+
+    <div id="identifications">
+        <p>Loading user identifications...</p>
+    </div>
+
+    <div id="iconic-taxa">
+        <p id="loading-taxa">Loading iconic taxa species counts...</p>
+    </div>
+
+    <div id="iconic-taxa-totals">
+        <p id="loading-taxa-totals">Loading iconic taxa totals...</p>
+    </div>
+
+    <script>
+        const projectID = 185008;
+        const iconicTaxa = [
+            "Actinopterygii", "Animalia", "Amphibia", "Arachnida", "Aves",
+            "Chromista", "Fungi", "Insecta", "Mammalia", "Mollusca",
+            "Reptilia", "Plantae", "Protozoa"
+        ];
+
+        const apiURL = `https://api.inaturalist.org/v2/projects/${projectID}?fields=header_image_url,title,banner_color`;
+
+        fetch(apiURL)
+            .then(response => response.json())
+            .then(data => {
+                const project = data.results[0];
+                const header_image_url = project.header_image_url || "https://via.placeholder.com/800x400?text=Image+Not+Available";
+                const title = project.title || "Title Not Available";
+                const banner_color = project.banner_color || "#ffffff";
+
+                document.body.style.backgroundColor = banner_color;
+
+                document.getElementById('content').innerHTML = `
+                    <a href="https://inaturalist.lu/projects/${projectID}" target="_blank">
+                        <img src="${header_image_url}" alt="${title}">
+                    </a>
+                    <div class="title">${title}</div>
+                `;
+            })
+            .catch(error => {
+                document.getElementById('content').innerHTML = `<div class="error">Failed to load project data: ${error.message}</div>`;
+            });
+
+        let taxaCallsCompleted = 0;
+        const taxaTotals = [];
+
+        iconicTaxa.forEach(taxon => {
+            const speciesCountsURL = `https://api.inaturalist.org/v2/observations/species_counts?project_id=${projectID}&iconic_taxa=${taxon}&quality_grade=casual,needs_id,research&page=1&per_page=5&locale=de&order=desc&fields=taxon.id,taxon.name,taxon.preferred_common_name`;
+
+            fetch(speciesCountsURL)
+                .then(response => response.json())
+                .then(data => {
+                    const totalResults = data.total_results || 0;
+                    taxaTotals.push({ taxon, totalResults });
+
+                    const tableHTML = `
+                        <div class="table-title">Top 5 Species for ${taxon}</div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Taxon Name</th>
+                                    <th>Common Name</th>
+                                    <th>Count</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${data.results.map(entry => `
+                                    <tr>
+                                        <td class="species-name">
+                                            <a href="https://inaturalist.lu/taxa/${entry.taxon.id}" target="_blank">
+                                                ${entry.taxon.name || 'N/A'}
+                                            </a>
+                                        </td>
+                                        <td>${entry.taxon.preferred_common_name || 'N/A'}</td>
+                                        <td>${entry.count || 0}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+
+                    document.getElementById('iconic-taxa').innerHTML += tableHTML;
+
+                    taxaCallsCompleted++;
+                    if (taxaCallsCompleted === iconicTaxa.length) {
+                        document.getElementById('loading-taxa').style.display = 'none';
+
+                        const totalsTable = `
+                            <div class="table-title">Iconic Taxa Totals</div>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Iconic Taxon</th>
+                                        <th>Total Results</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${taxaTotals.map(taxa => `
+                                        <tr>
+                                            <td>${taxa.taxon}</td>
+                                            <td>${taxa.totalResults}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        `;
+
+                        document.getElementById('iconic-taxa-totals').innerHTML = totalsTable;
+                        document.getElementById('loading-taxa-totals').style.display = 'none';
+                    }
+                })
+                .catch(error => {
+                    taxaCallsCompleted++;
+                    if (taxaCallsCompleted === iconicTaxa.length) {
+                        document.getElementById('loading-taxa-totals').style.display = 'none';
+                    }
+                });
+        });
+    </script>
+</body>
+</html>
