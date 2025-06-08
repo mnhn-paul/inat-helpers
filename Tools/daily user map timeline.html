@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>iNaturalist Map Viewer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 1rem;
+    }
+    #controls {
+      margin-bottom: 1rem;
+      z-index: 1000;
+      position: relative;
+    }
+    #suggestions {
+      position: absolute;
+      background: white;
+      border: 1px solid #ccc;
+      width: 300px;
+      z-index: 1000;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+    #suggestions li {
+      padding: 8px;
+      cursor: pointer;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      align-items: center;
+    }
+    #suggestions li:hover {
+      background: #f0f0f0;
+    }
+    #suggestions img {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      margin-right: 10px;
+    }
+    #map {
+      height: 500px;
+      width: 100%;
+      margin: 20px 0;
+      z-index: 1;
+    }
+    #data-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    #data-table th, #data-table td {
+      border: 1px solid #ccc;
+      padding: 5px;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <label>Search User:</label><br>
+    <input type="text" id="user-input" autocomplete="off" />
+    <ul id="suggestions"></ul><br>
+
+    <label>Select Date:</label><br>
+    <input type="date" id="date-input" /><br><br>
+
+    <button id="fetch-button">Retrieve Data</button>
+  </div>
+
+  <div id="map"></div>
+
+  <div>
+    <h3>Observations Table</h3>
+    <table id="data-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Observed At</th>
+          <th>Coordinates</th>
+          <th>App</th>
+          <th>Link</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    let selectedUser = "";
+    const input = document.getElementById("user-input");
+    const suggestions = document.getElementById("suggestions");
+
+    input.addEventListener("input", async () => {
+      const query = input.value.trim();
+      suggestions.innerHTML = "";
+      if (query.length < 2) return;
+
+      const url = `https://api.inaturalist.org/v2/users/autocomplete?q=${encodeURIComponent(query)}&fields=id%2Cicon_url%2Clogin%2Cname&per_page=5`;
+      const res = await fetch(url);
+      const data = await res.json();
+
+      data.results.forEach(user => {
+        const li = document.createElement("li");
+        li.innerHTML = `<img src="${user.icon_url}" /><span><strong>${user.login}</strong> (${user.name || ""})</span>`;
+        li.addEventListener("click", () => {
+          input.value = user.login;
+          selectedUser = user.login;
+          suggestions.innerHTML = "";
+        });
+        suggestions.appendChild(li);
+      });
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!suggestions.contains(e.target) && e.target !== input) {
+        suggestions.innerHTML = "";
+      }
+    });
+
+    const map = L.map("map").setView([0, 0], 2);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '&copy; OpenStreetMap contributors',
+    }).addTo(map);
+
+    const appColors = {};
+    const colorPalette = ["red", "blue", "green", "orange", "purple", "black", "teal"];
+
+    function getColor(appName) {
+      if (!appColors[appName]) {
+        const idx = Object.keys(appColors).length % colorPalette.length;
+        appColors[appName] = colorPalette[idx];
+      }
+      return appColors[appName];
+    }
+
+    document.getElementById("fetch-button").addEventListener("click", async () => {
+      const date = document.getElementById("date-input").value;
+      const tableBody = document.querySelector("#data-table tbody");
+      tableBody.innerHTML = "";
+
+      if (!selectedUser || !date) {
+        alert("Please select both a user and a date.");
+        return;
+      }
+
+      map.eachLayer(layer => {
+        if (layer instanceof L.CircleMarker) map.removeLayer(layer);
+      });
+
+      const allResults = [];
+      let page = 1;
+      let total = 0;
+      do {
+        const apiURL = `https://api.inaturalist.org/v2/observations?user_id=${selectedUser}&observed_on=${date}&per_page=200&page=${page}&order=desc&order_by=created_at&fields=id%2Ctime_observed_at%2Cgeojson.coordinates%2Capplication.name`;
+        const res = await fetch(apiURL);
+        const data = await res.json();
+        allResults.push(...data.results);
+        total = data.total_results;
+        page++;
+      } while ((page - 1) * 200 < total);
+
+      if (allResults.length === 0) {
+        alert("No observations found.");
+        return;
+      }
+
+      const bounds = [];
+
+      allResults.forEach(obs => {
+        const coords = obs.geojson?.coordinates;
+        if (!coords || coords.length !== 2) return;
+
+        // Correct order: [lat, lng]
+        const lat = coords[1];
+        const lng = coords[0];
+        const appName = obs.application?.name || "Unknown App";
+        const color = getColor(appName);
+        const time = obs.time_observed_at;
+        const link = `https://www.inaturalist.lu/observations/${obs.id}`;
+
+        const marker = L.circleMarker([lat, lng], {
+          color,
+          radius: 6,
+          fillOpacity: 0.8,
+        }).bindPopup(`
+          <strong>${appName}</strong><br>
+          ${time}<br>
+          <a href="${link}" target="_blank">View</a>
+        `);
+        marker.addTo(map);
+        bounds.push([lat, lng]);
+
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${obs.id}</td>
+          <td>${time}</td>
+          <td>${lat.toFixed(5)}, ${lng.toFixed(5)}</td>
+          <td>${appName}</td>
+          <td><a href="${link}" target="_blank">View</a></td>
+        `;
+        tableBody.appendChild(row);
+      });
+
+      // Delay to let map layout settle
+      setTimeout(() => {
+        map.invalidateSize();
+        if (bounds.length) map.fitBounds(bounds, { padding: [20, 20] });
+      }, 300);
+    });
+  </script>
+</body>
+</html>
