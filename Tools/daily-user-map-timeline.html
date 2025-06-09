@@ -229,6 +229,15 @@
 
       const bounds = [];
 
+      // Detect duplicate coordinates
+      const coordCount = {};
+      allObservations.forEach(obs => {
+        const coords = obs.geojson?.coordinates;
+        if (!coords || coords.length !== 2) return;
+        const key = coords[1].toFixed(5) + "," + coords[0].toFixed(5);
+        coordCount[key] = (coordCount[key] || 0) + 1;
+      });
+
       allObservations.forEach(obs => {
         const timeMinutes = timeToMinutes(obs.time_observed_at);
         if (mode === "slider" && (timeMinutes < minTime || timeMinutes > maxTime)) return;
@@ -255,7 +264,13 @@
         marker.addTo(map);
         bounds.push([lat, lng]);
 
+        const coordKey = lat.toFixed(5) + "," + lng.toFixed(5);
+        const isDuplicate = coordCount[coordKey] > 1;
+
         const row = document.createElement("tr");
+        if (isDuplicate) {
+          row.style.backgroundColor = "#ffebcc"; // highlight duplicate rows
+        }
         row.innerHTML = `
           <td>${obs.id}</td>
           <td>${time}</td>
