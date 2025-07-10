@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>iNaturalist Observation Viewer</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 1rem;
+    }
+    #controls {
+      margin-bottom: 1rem;
+    }
+    #user-info {
+      margin-top: 0.5rem;
+    }
+    #map {
+      height: 400px;
+      margin-bottom: 1rem;
+      z-index: 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 6px;
+      text-align: left;
+    }
+    #tod-controls {
+      margin: 1rem 0;
+    }
+    #tod-slider {
+      width: 100%;
+    }
+    #histogram {
+      display: flex;
+      height: 60px;
+      margin-bottom: 0.5rem;
+      background: #f0f0f0;
+      border: 1px solid #ccc;
+    }
+    .bar {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      align-items: center;
+      position: relative;
+    }
+    .bar div {
+      width: 100%;
+      background: steelblue;
+    }
+    .bar.highlighted div {
+      background: darkorange !important;
+      border-top: 2px solid #000;
+    }
+  </style>
+</head>
+<body>
+  <div class="top-menu">
+    <a href="../index.html">← Back to Home</a>
+  </div>
+  <h2>iNaturalist Observation Viewer</h2>
+
+  <div id="controls">
+    <label>
+      Lookup User:
+      <input type="text" id="user-search" placeholder="Search username..." />
+    </label>
+    <div id="user-dropdown"></div>
+    <div id="user-info"></div>
+    <label>
+      Select Date:
+      <input type="date" id="date-picker" />
+    </label>
+    <button id="fetch-button">Retrieve Data</button>
+  </div>
+
+  <div id="tod-controls">
+    <label>
+      <input type="radio" name="filter-mode" value="all" checked />
+      Show All Observations
+    </label>
+    <label>
+      <input type="radio" name="filter-mode" value="slider" />
+      Use Time-of-Day Filter
+    </label><br><br>
+
+    <label>
+      Time Interval (minutes):
+      <input type="number" id="time-interval" value="30" min="1" max="720" />
+    </label><br><br>
+
+    <div id="histogram"></div>
+
+    <label for="tod-slider">Time of Day:</label>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <button id="move-left">⟵</button>
+      <input type="range" id="tod-slider" min="0" max="1439" value="720" />
+      <button id="move-right">⟶</button>
+      <span id="tod-display">12:00</span>
+    </div>
+  </div>
+
+  <div id="map"></div>
+
+  <table id="data-table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Observed At</th>
+        <th>Coordinates</th>
+        <th>App</th>
+        <th>Link</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    const searchInput = document.getElementById("user-search");
+    const dropdown = document.getElementById("user-dropdown");
+    const userInfo = document.getElementById("user-info");
+    const datePicker = document.getElementById("date-picker");
+    const fetchButton = document.getElementById("fetch-button");
+    const slider = document.getElementById("tod-slider");
+    const intervalInput = document.getElementById("time-interval");
+    const todDisplay = document.getElementById("tod-display");
+    const histogram = document.getElementById("histogram");
+    const filterRadios = document.getElementsByName("filter-mode");
+    let selectedUser = null;
+    let map = L.map("map").setView([0, 0], 2);
+    let allObservations = [];
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors",
+    }).addTo(map);
+
+    searchInput.addEventListener("input", async () => {
+      const query = searchInput.value.trim();
+      if (!query) return;
+      const res = await fetch(`https://api.inaturalist.org/v2/users/autocomplete?q=${encodeURIComponent(query)}&fields=id%2Cicon_url%2Clogin%2Cname`);
+      const data = await res.json();
+      dropdown.innerHTML = "";
+      data.results.slice(0, 5).forEach(user => {
+        const div = document.createElement("div");
+        div.innerHTML = `<img src="${user.icon_url}" width="24" style="vertical-align:middle"> ${user.login} (${user.name || "No Name"})`;
+        div.style.cursor = "pointer";
+        div.addEventListener("click", () => {
+          selectedUser = user;
+          searchInput.value = user.login;
+          dropdown.innerHTML = "";
+          userInfo.innerHTML = `Selected: <strong>${user.name || user.login}</strong>`;
+        });
+        dropdown.appendChild(div);
+      });
+    });
+
+    fetchButton.addEventListener("click", async () => {
+      if (!selectedUser || !datePicker.value) {
+        alert("Please select a user and a date.");
+        return;
+      }
+
+      let page = 1;
+      let allResults = [];
+      while (true) {
+        const res = await fetch(`https://api.inaturalist.org/v2/observations?user_id=${selectedUser.login}&observed_on=${datePicker.value}&page=${page}&per_page=200&order=desc&order_by=created_at&fields=id%2Ctime_observed_at%2Cgeojson.coordinates%2Capplication.name`);
+        const data = await res.json();
+        if (data.results.length === 0) break;
+        allResults = allResults.concat(data.results);
+        if (data.results.length < 200) break;
+        page++;
+      }
+
+      allObservations = allResults;
+      renderHistogram(allObservations);
+      updateTODFilter();
+    });
+
+    function getColor(appName) {
+      const colors = {
+        "iNaturalist (iNat Next)": "blue",
+        "Seek": "green",
+        "Unknown App": "gray"
+      };
+      return colors[appName] || "red";
+    }
+
+    function timeToMinutes(isoTime) {
+      const date = new Date(isoTime);
+      return date.getHours() * 60 + date.getMinutes();
+    }
+
+    function formatMinutesToHHMM(minutes) {
+      const hrs = Math.floor(minutes / 60).toString().padStart(2, "0");
+      const mins = (minutes % 60).toString().padStart(2, "0");
+      return `${hrs}:${mins}`;
+    }
+
+    function getSelectedFilterMode() {
+      return [...filterRadios].find(r => r.checked)?.value || "all";
+    }
+
+    function updateTODFilter() {
+      if (!allObservations.length) return;
+
+      const mode = getSelectedFilterMode();
+      const center = parseInt(slider.value, 10);
+      const interval = parseInt(intervalInput.value, 10);
+      const minTime = center - interval;
+      const maxTime = center + interval;
+      todDisplay.textContent = formatMinutesToHHMM(center);
+
+      map.eachLayer(layer => {
+        if (layer instanceof L.CircleMarker) map.removeLayer(layer);
+      });
+
+      const tableBody = document.querySelector("#data-table tbody");
+      tableBody.innerHTML = "";
+
+      const bounds = [];
+
+      // Detect duplicate coordinates
+      const coordCount = {};
+      allObservations.forEach(obs => {
+        const coords = obs.geojson?.coordinates;
+        if (!coords || coords.length !== 2) return;
+        const key = coords[1].toFixed(5) + "," + coords[0].toFixed(5);
+        coordCount[key] = (coordCount[key] || 0) + 1;
+      });
+
+      allObservations.forEach(obs => {
+        const timeMinutes = timeToMinutes(obs.time_observed_at);
+        if (mode === "slider" && (timeMinutes < minTime || timeMinutes > maxTime)) return;
+
+        const coords = obs.geojson?.coordinates;
+        if (!coords || coords.length !== 2) return;
+
+        const lat = coords[1];
+        const lng = coords[0];
+        const appName = obs.application?.name || "Unknown App";
+        const color = getColor(appName);
+        const time = obs.time_observed_at;
+        const link = `https://www.inaturalist.lu/observations/${obs.id}`;
+
+        const marker = L.circleMarker([lat, lng], {
+          color,
+          radius: 6,
+          fillOpacity: 0.8,
+        }).bindPopup(`
+          <strong>${appName}</strong><br>
+          ${time}<br>
+          <a href="${link}" target="_blank">View</a>
+        `);
+        marker.addTo(map);
+        bounds.push([lat, lng]);
+
+        const coordKey = lat.toFixed(5) + "," + lng.toFixed(5);
+        const isDuplicate = coordCount[coordKey] > 1;
+
+        const row = document.createElement("tr");
+        if (isDuplicate) {
+          row.style.backgroundColor = "#ffebcc"; // highlight duplicate rows
+        }
+        row.innerHTML = `
+          <td>${obs.id}</td>
+          <td>${time}</td>
+          <td>${lat.toFixed(5)}, ${lng.toFixed(5)}</td>
+          <td>${appName}</td>
+          <td><a href="${link}" target="_blank">View</a></td>
+        `;
+        tableBody.appendChild(row);
+      });
+
+      if (bounds.length) {
+        map.fitBounds(bounds, { padding: [20, 20] });
+      }
+    }
+
+    function renderHistogram(data) {
+      const bins = Array(144).fill(0);
+      data.forEach(obs => {
+        const min = timeToMinutes(obs.time_observed_at);
+        const bin = Math.floor(min / 10);
+        bins[bin]++;
+      });
+
+      const max = Math.max(...bins);
+      const center = parseInt(slider.value, 10);
+      const interval = parseInt(intervalInput.value, 10);
+      const minTime = center - interval;
+      const maxTime = center + interval;
+
+      histogram.innerHTML = "";
+      bins.forEach((count, index) => {
+        const bar = document.createElement("div");
+        bar.className = "bar";
+        const binStartMin = index * 10;
+        const binEndMin = binStartMin + 9;
+
+        if (binEndMin >= minTime && binStartMin <= maxTime) {
+          bar.classList.add("highlighted");
+        }
+
+        bar.innerHTML = `<div style="height:${(count / max) * 100}%"></div>`;
+        histogram.appendChild(bar);
+      });
+    }
+
+    slider.addEventListener("input", () => {
+      updateTODFilter();
+      renderHistogram(allObservations);
+    });
+
+    intervalInput.addEventListener("change", () => {
+      updateTODFilter();
+      renderHistogram(allObservations);
+    });
+
+    filterRadios.forEach(radio => radio.addEventListener("change", () => {
+      updateTODFilter();
+      renderHistogram(allObservations);
+    }));
+
+    document.getElementById("move-left").addEventListener("click", () => {
+      const step = parseInt(intervalInput.value, 10);
+      let value = parseInt(slider.value, 10);
+      value = Math.max(0, value - step);
+      slider.value = value;
+      updateTODFilter();
+      renderHistogram(allObservations);
+    });
+
+    document.getElementById("move-right").addEventListener("click", () => {
+      const step = parseInt(intervalInput.value, 10);
+      let value = parseInt(slider.value, 10);
+      value = Math.min(1439, value + step);
+      slider.value = value;
+      updateTODFilter();
+      renderHistogram(allObservations);
+    });
+  </script>
+</body>
+</html>
