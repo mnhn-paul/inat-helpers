@@ -22,7 +22,7 @@
       font-size: 1rem;
     }
 
-    h2 {
+    h2, h3 {
       font-size: 1.5em;
       text-align: center;
       margin-bottom: 1em;
@@ -104,20 +104,32 @@
       margin-top: 0.5em;
     }
 
-    .quick-button {
+    .quick-button, .compare-button {
       display: inline-block;
       margin-top: 0.5em;
-      padding: 0.4em 0.8em;
+      padding: 0.6em 1em;
       background: #0073e6;
       color: white;
       border: none;
       border-radius: 4px;
-      font-size: 0.9em;
+      font-size: 1em;
       cursor: pointer;
     }
 
-    .quick-button:hover {
+    .quick-button:hover, .compare-button:hover {
       background: #005bb5;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 1em;
+    }
+
+    th, td {
+      border: 1px solid #ccc;
+      padding: 0.6em;
+      text-align: center;
     }
 
     @media (max-width: 600px) {
@@ -170,13 +182,83 @@
     <label for="location">Location (optional)</label>
     <input type="text" id="location" placeholder="Enter location" oninput="autocompleteLocation()" autocomplete="off">
     <div id="location-autocomplete" class="autocomplete-results"></div>
-
     <button class="quick-button" onclick="selectQuickLocation()">Quick Select: Grand-Duché de Luxembourg</button>
-
     <div id="location-selected" class="location-selected" style="display: none;">
       <span id="location-name">Selected: </span>
       <button class="clear-btn" onclick="clearLocation()">×</button>
     </div>
+  </div>
+
+  <button class="compare-button" onclick="compareUsers()">Compare Users</button>
+
+  <div id="comparison-section" style="display:none;">
+    <h3>Global User Stats</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Metric</th>
+          <th id="user1-header">User 1</th>
+          <th id="user2-header">User 2</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Observations</td>
+          <td id="comp-observations-user1"></td>
+          <td id="comp-observations-user2"></td>
+        </tr>
+        <tr>
+          <td>Species</td>
+          <td id="comp-species-user1"></td>
+          <td id="comp-species-user2"></td>
+        </tr>
+        <tr>
+          <td>Identifications</td>
+          <td id="comp-ids-user1"></td>
+          <td id="comp-ids-user2"></td>
+        </tr>
+        <tr>
+          <td>Joined</td>
+          <td id="comp-joined-user1"></td>
+          <td id="comp-joined-user2"></td>
+        </tr>
+        <tr>
+          <td>Site</td>
+          <td id="comp-site-user1"></td>
+          <td id="comp-site-user2"></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div id="local-comparison-section" style="display:none;">
+    <h3>Local Species Comparison</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Metric</th>
+          <th>User 1</th>
+          <th>User 2</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Total Species Observed (Local)</td>
+          <td id="local-total-user1"></td>
+          <td id="local-total-user2"></td>
+        </tr>
+        <tr>
+          <td>Species Only Observed by User 1</td>
+          <td id="local-only-user1"></td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td>Species Only Observed by User 2</td>
+          <td>—</td>
+          <td id="local-only-user2"></td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 
   <script>
@@ -200,7 +282,7 @@
             const item = document.createElement('div');
             item.className = 'autocomplete-item';
             item.innerHTML = `
-              <img src="${user.icon_url || 'https://www.inaturalist.org/assets/icon-user-default-94f84d8c6a65be49c7efefef812e2d1e.png'}">
+              <img src="${user.icon_url || 'https://www.inaturalist.org/assets/icon-user-default.png'}">
               <span>${user.login}</span>
             `;
             item.onclick = () => {
@@ -216,7 +298,7 @@
 
     function showUserInfo(fieldId, user) {
       document.getElementById(`${fieldId}-info`).style.display = 'flex';
-      document.getElementById(`${fieldId}-avatar`).src = user.icon_url || 'https://www.inaturalist.org/assets/icon-user-default-94f84d8c6a65be49c7efefef812e2d1e.png';
+      document.getElementById(`${fieldId}-avatar`).src = user.icon_url || 'https://www.inaturalist.org/assets/icon-user-default.png';
       document.getElementById(`${fieldId}-name`).innerText = user.name || user.login;
     }
 
@@ -275,6 +357,59 @@
       const id = '120582';
       document.getElementById('location').value = name;
       setSelectedPlace(name, id);
+    }
+
+    function compareUsers() {
+      const user1 = userCache['user1'];
+      const user2 = userCache['user2'];
+      if (!user1 || !user2) {
+        alert("Please select both users before comparing.");
+        return;
+      }
+
+      document.getElementById('comparison-section').style.display = 'none';
+      document.getElementById('local-comparison-section').style.display = 'none';
+
+      [user1, user2].forEach((u, i) => {
+        fetch(`https://api.inaturalist.org/v2/users/${u.login}?fields=observations_count,created_at,identifications_count,login,name,site.name,species_count`)
+          .then(res => res.json())
+          .then(data => {
+            const d = data.results[0];
+            document.getElementById(`user${i + 1}-header`).innerText = d.login;
+            document.getElementById(`comp-observations-user${i + 1}`).innerText = d.observations_count;
+            document.getElementById(`comp-species-user${i + 1}`).innerText = d.species_count;
+            document.getElementById(`comp-ids-user${i + 1}`).innerText = d.identifications_count;
+            document.getElementById(`comp-joined-user${i + 1}`).innerText = new Date(d.created_at).toLocaleDateString();
+            document.getElementById(`comp-site-user${i + 1}`).innerText = d.site?.name || "—";
+            document.getElementById('comparison-section').style.display = 'block';
+          });
+      });
+
+      runLocalSpeciesComparison(user1.login, user2.login);
+    }
+
+    function runLocalSpeciesComparison(user1, user2) {
+      const placeId = document.getElementById('location').dataset.placeId || null;
+      const base = `https://api.inaturalist.org/v2/observations/species_counts`;
+
+      const queries = [
+        { url: `${base}?user_id=${user1}${placeId ? `&place_id=${placeId}` : ''}`, target: 'local-total-user1' },
+        { url: `${base}?user_id=${user2}${placeId ? `&place_id=${placeId}` : ''}`, target: 'local-total-user2' },
+        { url: `${base}?user_id=${user1}&unobserved_by_user_id=${user2}${placeId ? `&place_id=${placeId}` : ''}&page=1&per_page=0`, target: 'local-only-user1' },
+        { url: `${base}?user_id=${user2}&unobserved_by_user_id=${user1}${placeId ? `&place_id=${placeId}` : ''}&page=1&per_page=0`, target: 'local-only-user2' },
+      ];
+
+      let loaded = 0;
+      queries.forEach(q => {
+        fetch(q.url).then(res => res.json()).then(data => {
+          document.getElementById(q.target).innerText = data.total_results ?? '—';
+          if (++loaded === 4) {
+            document.getElementById('local-comparison-section').style.display = 'block';
+          }
+        }).catch(() => {
+          document.getElementById(q.target).innerText = 'Error';
+        });
+      });
     }
   </script>
 </body>
