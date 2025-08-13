@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>iNaturalist Observations Timeline</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  body { font-family: Arial, sans-serif; padding: 20px; }
+  label { display: block; margin-top: 10px; }
+  input, select, button { padding: 5px; margin-top: 5px; }
+  #chartContainer { margin-top: 20px; }
+</style>
+</head>
+<body>
+<h1>iNaturalist Observations Timeline</h1>
+
+<label>
+  Search User:
+  <input type="text" id="userSearch" placeholder="Type username...">
+  <select id="userSelect"></select>
+</label>
+
+<label>
+  Search Location:
+  <input type="text" id="locationSearch" placeholder="Type location...">
+  <select id="locationSelect"></select>
+</label>
+
+<button id="fetchData">Get Observations</button>
+
+<div id="chartContainer">
+  <canvas id="obsChart"></canvas>
+</div>
+
+<script>
+async function searchUsers(query) {
+  const res = await fetch(`https://api.inaturalist.org/v1/users/autocomplete?q=${encodeURIComponent(query)}`);
+  const data = await res.json();
+  return data.results || [];
+}
+
+async function searchPlaces(query) {
+  const res = await fetch(`https://api.inaturalist.org/v1/places/autocomplete?q=${encodeURIComponent(query)}`);
+  const data = await res.json();
+  return data.results || [];
+}
+
+async function getHistogram(userId, placeId) {
+  const url = `https://api.inaturalist.org/v1/observations/histogram?place_id=${placeId}&user_id=${userId}&date_field=observed&interval=year`;
+  const res = await fetch(url);
+  const data = await res.json();
+  return data.results.year || {};
+}
+
+function populateSelect(selectElem, items, labelKey, idKey) {
+  selectElem.innerHTML = "";
+  items.forEach(item => {
+    const option = document.createElement("option");
+    option.value = item[idKey];
+    option.textContent = item[labelKey];
+    selectElem.appendChild(option);
+  });
+}
+
+document.getElementById('userSearch').addEventListener('input', async e => {
+  if (e.target.value.length < 2) return;
+  const users = await searchUsers(e.target.value);
+  populateSelect(document.getElementById('userSelect'), users, 'login', 'id');
+});
+
+document.getElementById('locationSearch').addEventListener('input', async e => {
+  if (e.target.value.length < 2) return;
+  const places = await searchPlaces(e.target.value);
+  populateSelect(document.getElementById('locationSelect'), places, 'display_name', 'id');
+});
+
+let chart;
+document.getElementById('fetchData').addEventListener('click', async () => {
+  const userId = document.getElementById('userSelect').value;
+  const placeId = document.getElementById('locationSelect').value;
+  const username = document.getElementById('userSelect').selectedOptions[0]?.text;
+  const locationName = document.getElementById('locationSelect').selectedOptions[0]?.text;
+
+  if (!userId || !placeId) {
+    alert("Please select both a user and a location.");
+    return;
+  }
+
+  const histogram = await getHistogram(userId, placeId);
+  
+  // Convert keys like "2015-01-01" → 2015
+  const labels = Object.keys(histogram).map(dateStr => dateStr.split('-')[0]);
+  const counts = Object.values(histogram);
+
+  if (chart) chart.destroy();
+  chart = new Chart(document.getElementById('obsChart'), {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: `Observations by ${username} in ${locationName}`,
+        data: counts,
+        borderColor: 'rgba(54, 162, 235, 1)',
+        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+        fill: true,
+        tension: 0.2
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: { y: { beginAtZero: true } }
+    }
+  });
+});
+</script>
+</body>
+</html>
