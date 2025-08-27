@@ -2,7 +2,7 @@ title: "iNaturalist Tool Library"
 description: "Custom tools and biodiversity data resources"
 theme: jekyll-theme-minimal
 baseurl: ""  # leave empty if using username.github.io/repo-name
-url: "https://yourusername.github.io"
+url: "https://mnhn-paul.github.io"
 
 # Navigation menu
 nav:
