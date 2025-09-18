@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>iNaturalist Luxembourg Activity</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    th.sortable { cursor: pointer; }
+    th.sortable:hover { background-color: #047857; }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col items-center py-10">
+  <h1 class="text-2xl font-bold mb-6">iNaturalist Observers in Luxembourg (last 7 days)</h1>
+
+  <div class="overflow-x-auto w-full max-w-6xl">
+    <table id="observersTable" class="min-w-full bg-white shadow-md rounded-lg overflow-hidden">
+      <thead class="bg-green-600 text-white">
+        <tr>
+          <th class="py-3 px-4 text-left sortable">User</th>
+          <th class="py-3 px-4 text-left sortable">Name</th>
+          <th class="py-3 px-4 text-right sortable">Obs (last 7d)</th>
+          <th class="py-3 px-4 text-right sortable">Species (last 7d)</th>
+          <th class="py-3 px-4 text-right sortable">Total Observations</th>
+          <th class="py-3 px-4 text-right sortable">Obs in Luxembourg</th>
+          <th class="py-3 px-4 text-right sortable">Obs outside Luxembourg</th>
+          <th class="py-3 px-4 text-right sortable">Lux 7d vs Outside Ratio</th>
+        </tr>
+      </thead>
+      <tbody id="observers" class="divide-y divide-gray-200"></tbody>
+    </table>
+  </div>
+
+  <script>
+    async function fetchObservers() {
+      const placeId = 120582;
+
+      // Calculate date 7 days ago
+      const today = new Date();
+      const pastDate = new Date();
+      pastDate.setDate(today.getDate() - 7);
+      const d1 = pastDate.toISOString().split('T')[0];
+
+      const url = `https://api.inaturalist.org/v2/observations/observers?place_id=${placeId}&d1=${d1}&order=desc&fields=observation_count%2Cspecies_count%2Cuser.icon_url%2Cuser.observations_count%2Cuser.login%2Cuser.name%2Cuser.id&order_by=observation_count`;
+
+      try {
+        const response = await fetch(url);
+        const data = await response.json();
+
+        // Collect all logins for the second API call
+        const logins = data.results.map(obs => obs.user.login).join(",");
+        const secondUrl = `https://api.inaturalist.org/v2/observations/observers?place_id=${placeId}&user_login=${logins}&fields=observation_count%2Cuser.login%2Cuser.id`;
+
+        const secondResponse = await fetch(secondUrl);
+        const secondData = await secondResponse.json();
+
+        // Map user login to Luxembourg observation count (all time)
+        const luxMap = {};
+        secondData.results.forEach(obs => {
+          luxMap[obs.user.login] = obs.observation_count;
+        });
+
+        const tbody = document.getElementById("observers");
+
+        data.results.forEach(obs => {
+          const userLogin = obs.user.login;
+          const totalObs = obs.user.observations_count;
+          const luxObs = luxMap[userLogin] || 0;
+          const outsideObs = totalObs - luxObs;
+          const ratio = outsideObs > 0 ? ((obs.observation_count / outsideObs) * 100).toFixed(3) + "%" : "∞";
+
+          const tr = document.createElement("tr");
+
+          tr.innerHTML = `
+            <td class="py-3 px-4 flex items-center space-x-2">
+              <a href="https://inaturalist.lu/people/${obs.user.id}" target="_blank" class="flex items-center space-x-2">
+                <img src="${obs.user.icon_url || ''}" alt="${obs.user.login}" class="w-8 h-8 rounded-full">
+                <span class="text-green-700 font-medium">${userLogin}</span>
+              </a>
+            </td>
+            <td class="py-3 px-4">${obs.user.name || ''}</td>
+            <td class="py-3 px-4 text-right font-semibold">
+              <a href="https://inaturalist.lu/observations?d1=${d1}&place_id=${placeId}&user_id=${userLogin}" target="_blank" class="text-blue-600 hover:underline">
+                ${obs.observation_count}
+              </a>
+            </td>
+            <td class="py-3 px-4 text-right">${obs.species_count}</td>
+            <td class="py-3 px-4 text-right text-gray-600">${totalObs}</td>
+            <td class="py-3 px-4 text-right">${luxObs}</td>
+            <td class="py-3 px-4 text-right">${outsideObs}</td>
+            <td class="py-3 px-4 text-right">${ratio}</td>
+          `;
+
+          tbody.appendChild(tr);
+        });
+
+        makeTableSortable();
+      } catch (error) {
+        console.error("Error fetching data:", error);
+      }
+    }
+
+    function makeTableSortable() {
+      const table = document.getElementById("observersTable");
+      const headers = table.querySelectorAll("th.sortable");
+
+      headers.forEach((header, index) => {
+        header.addEventListener("click", () => {
+          const rows = Array.from(table.querySelector("tbody").rows);
+          const isNumeric = index > 1; // numeric from 2nd column onwards
+
+          const sorted = rows.sort((a, b) => {
+            const aText = a.cells[index].innerText.replace(/%/, '');
+            const bText = b.cells[index].innerText.replace(/%/, '');
+            return isNumeric ? parseFloat(aText) - parseFloat(bText) : aText.localeCompare(bText);
+          });
+
+          // Toggle sort direction
+          if (header.classList.contains("asc")) {
+            sorted.reverse();
+            header.classList.remove("asc");
+            header.classList.add("desc");
+          } else {
+            header.classList.remove("desc");
+            header.classList.add("asc");
+          }
+
+          const tbody = table.querySelector("tbody");
+          tbody.innerHTML = "";
+          sorted.forEach(row => tbody.appendChild(row));
+        });
+      });
+    }
+
+    fetchObservers();
+  </script>
+</body>
+</html>
