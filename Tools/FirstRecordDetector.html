@@ -440,8 +440,8 @@ function sortTable(columnIndex) {
         if (columnIndex !== 4) { // Don't do secondary sort if we're already sorting by total
             const totalA = parseFloat(a.cells[4].textContent) || 0;
             const totalB = parseFloat(b.cells[4].textContent) || 0;
-            if (totalA < totalB) return 1; // Higher totals first
-            if (totalA > totalB) return -1; // Higher totals first
+            if (totalA < totalB) return -1; // Higher totals first
+            if (totalA > totalB) return 1; // Higher totals first
         }
         
         return 0;
