@@ -562,7 +562,7 @@ function sortTable(columnIndex) {
                     ratioCell.textContent = ratio.toFixed(4); // Show 4 decimal places
 
                     // Update the observation count URL with filters
-                    const observationUrl = `https://inaturalist.lu/observations?taxon_id=${taxonId}&${qualityFilter}&d1=${startDate}&d2=${endDate}&user_login=${userName}`;
+                    const observationUrl = `https://inaturalist.lu/observations?taxon_id=${taxonId}&${qualityFilter}&d1=${startDate}&d2=${endDate}&user_login=${userName}&place_id=120582`;
                     countCell.innerHTML = `<a href="${observationUrl}" target="_blank">${filteredCount}</a>`;
                 }
             });
@@ -586,7 +586,7 @@ function sortTable(columnIndex) {
                     <td>${index + 1}</td>
                     <td class="italic">${taxonName}</td>
                     <td><a href="https://www.inaturalist.org/taxa/${taxonId}" target="_blank">${taxonId}</a></td>
-                    <td><a href="https://inaturalist.lu/observations?taxon_id=${taxonId}&${qualityFilter}&d1=${startDate}&d2=${endDate}&user_login=${userName}" target="_blank">${count}</a></td>
+                    <td><a href="https://inaturalist.lu/observations?taxon_id=${taxonId}&${qualityFilter}&d1=${startDate}&d2=${endDate}&user_login=${userName}&place_id=120582" target="_blank">${count}</a></td>
                     <td class="total"></td>
                     <td class="ratio"></td>
                     <td><img src="${photoUrl}" alt="${taxonName}" onerror="this.style.display='none'"></td>
