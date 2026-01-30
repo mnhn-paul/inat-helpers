@@ -332,6 +332,7 @@
         let debounceTimeout;
         let gbifDataCache = new Map(); // Cache for GBIF data
         let isFetchingGBIF = false;
+        let taxonGbifKeyMap = new Map(); // Map iNat taxon IDs to GBIF keys
 
         // DOM elements
         const taxonInput = document.getElementById('taxonInput');
@@ -401,6 +402,7 @@
             
             // Reset GBIF state
             gbifDataCache.clear();
+            taxonGbifKeyMap.clear();
             fetchGbifBtn.disabled = true; // Disable until data is loaded
             fetchGbifBtn.textContent = 'Fetch GBIF Data';
             gbifProgress.style.display = 'none';
@@ -682,7 +684,7 @@
             document.querySelector(`th[data-column="5"]`).classList.add('sorted-desc');
         }
 
-        // GBIF Functions - Get correct backbone taxonomy key
+        // GBIF Functions - Optimized batch processing
         async function fetchGBIFDataForAllRows() {
             if (isFetchingGBIF) return;
             
@@ -693,27 +695,150 @@
             fetchGbifBtn.disabled = true;
             fetchGbifBtn.textContent = 'Fetching GBIF Data...';
             gbifProgress.style.display = 'block';
+            gbifProgressBar.style.width = '10%';
+            gbifProgressBar.textContent = 'Getting GBIF keys...';
             
-            let completed = 0;
-            const total = rows.length;
+            console.log(`Starting optimized GBIF fetch for ${rows.length} taxa`);
             
-            console.log(`Starting GBIF fetch for ${total} taxa`);
+            // Step 1: Get GBIF keys for all taxa first (batch process)
+            await delay(100);
+            gbifProgressBar.style.width = '30%';
+            gbifProgressBar.textContent = 'Getting GBIF keys...';
             
-            // Process all rows sequentially to avoid rate limiting
+            // Get GBIF keys for all taxa
+            const taxonData = [];
             for (let i = 0; i < rows.length; i++) {
                 const row = rows[i];
-                await fetchGBIFDataForRow(row);
+                const taxonId = row.cells[2].textContent.trim();
+                const taxonName = row.cells[1].textContent.trim();
+                taxonData.push({ taxonId, taxonName, row });
+            }
+            
+            // Get GBIF keys in batches
+            const batchSize = 20;
+            for (let i = 0; i < taxonData.length; i += batchSize) {
+                const batch = taxonData.slice(i, i + batchSize);
+                await Promise.all(batch.map(async (item) => {
+                    const gbifKey = await getCorrectGbifBackboneKey(item.taxonName);
+                    if (gbifKey) {
+                        taxonGbifKeyMap.set(item.taxonId, gbifKey);
+                    }
+                }));
                 
-                completed++;
-                const progress = Math.round((completed / total) * 100);
-                gbifProgressBar.style.width = `${progress}%`;
-                gbifProgressBar.textContent = `${progress}% (${completed}/${total})`;
+                const progress = Math.round(((i + batchSize) / taxonData.length) * 30) + 30;
+                gbifProgressBar.style.width = `${Math.min(progress, 60)}%`;
+                gbifProgressBar.textContent = `Getting GBIF keys (${Math.min(i + batchSize, taxonData.length)}/${taxonData.length})`;
                 
-                // Small delay between requests
-                if (i < rows.length - 1) {
+                if (i + batchSize < taxonData.length) {
                     await delay(500);
                 }
             }
+            
+            // Step 2: Query GBIF occurrences in batches
+            gbifProgressBar.style.width = '60%';
+            gbifProgressBar.textContent = 'Querying GBIF occurrences...';
+            
+            // Group taxa by GBIF key (filter out taxa without GBIF keys)
+            const gbifKeys = Array.from(taxonGbifKeyMap.values()).filter(key => key);
+            console.log(`Found ${gbifKeys.length} GBIF keys out of ${taxonData.length} taxa`);
+            
+            if (gbifKeys.length === 0) {
+                // No GBIF keys found, set all to 0
+                rows.forEach(row => {
+                    const gbifCell = row.cells[6];
+                    gbifCell.innerHTML = '<span title="No GBIF ID found">0</span>';
+                    gbifCell.classList.remove('gbif-loading');
+                });
+                
+                fetchGbifBtn.textContent = 'GBIF Data Fetched';
+                gbifProgressBar.style.width = '100%';
+                gbifProgressBar.textContent = 'Complete!';
+                isFetchingGBIF = false;
+                
+                setTimeout(() => {
+                    gbifProgress.style.display = 'none';
+                }, 3000);
+                return;
+            }
+            
+            // Query GBIF occurrences in batches of 50 keys (GBIF API limit for taxon_key parameter)
+            const occurrenceCounts = new Map();
+            const keyBatchSize = 50;
+            
+            for (let i = 0; i < gbifKeys.length; i += keyBatchSize) {
+                const keyBatch = gbifKeys.slice(i, i + keyBatchSize);
+                const gbifOccurrenceUrl = `https://api.gbif.org/v1/occurrence/search?country=LU&limit=0&facet=speciesKey&facetLimit=100000`;
+                
+                // Add taxon keys as separate parameters
+                let batchUrl = gbifOccurrenceUrl;
+                keyBatch.forEach((key, index) => {
+                    batchUrl += `&taxon_key=${key}`;
+                });
+                
+                logApiCall(`GBIF Batch Occurrences: ${keyBatch.length} species`);
+                console.log(`Querying GBIF for batch ${Math.floor(i/keyBatchSize) + 1} of ${Math.ceil(gbifKeys.length/keyBatchSize)}`);
+                
+                try {
+                    const response = await fetch(batchUrl);
+                    const data = await response.json();
+                    
+                    // Process facet results to get counts per species
+                    if (data.facets && data.facets[0] && data.facets[0].counts) {
+                        data.facets[0].counts.forEach(facet => {
+                            occurrenceCounts.set(parseInt(facet.name), facet.count);
+                        });
+                    }
+                    
+                    const progress = Math.round(((i + keyBatchSize) / gbifKeys.length) * 30) + 60;
+                    gbifProgressBar.style.width = `${Math.min(progress, 90)}%`;
+                    gbifProgressBar.textContent = `Querying GBIF occurrences (${Math.min(i + keyBatchSize, gbifKeys.length)}/${gbifKeys.length} keys)`;
+                    
+                    if (i + keyBatchSize < gbifKeys.length) {
+                        await delay(1000); // Respect GBIF rate limits
+                    }
+                } catch (error) {
+                    console.error(`Error fetching GBIF occurrences batch:`, error);
+                }
+            }
+            
+            // Step 3: Update table with results
+            gbifProgressBar.style.width = '90%';
+            gbifProgressBar.textContent = 'Updating table...';
+            
+            let updatedCount = 0;
+            taxonData.forEach(item => {
+                const gbifCell = item.row.cells[6];
+                const gbifKey = taxonGbifKeyMap.get(item.taxonId);
+                
+                if (gbifKey) {
+                    const count = occurrenceCounts.get(gbifKey) || 0;
+                    const result = {
+                        count: count,
+                        gbifKey: gbifKey,
+                        taxonId: item.taxonId,
+                        taxonName: item.taxonName,
+                        gbifSpeciesUrl: `https://www.gbif.org/species/${gbifKey}`
+                    };
+                    
+                    updateGbifCell(gbifCell, result);
+                    gbifDataCache.set(item.taxonId, result);
+                } else {
+                    gbifCell.innerHTML = '<span title="No GBIF ID found">0</span>';
+                    gbifCell.classList.remove('gbif-loading');
+                    
+                    gbifDataCache.set(item.taxonId, {
+                        count: 0,
+                        gbifKey: null,
+                        taxonId: item.taxonId,
+                        taxonName: item.taxonName,
+                        error: false
+                    });
+                }
+                
+                updatedCount++;
+            });
+            
+            console.log(`Updated ${updatedCount} rows with GBIF data`);
             
             fetchGbifBtn.textContent = 'GBIF Data Fetched';
             gbifProgressBar.style.width = '100%';
@@ -726,130 +851,26 @@
             }, 3000);
         }
 
-        async function fetchGBIFDataForRow(row) {
-            const taxonId = row.cells[2].textContent.trim();
-            const taxonName = row.cells[1].textContent.trim();
-            const gbifCell = row.cells[6];
-            
-            console.log(`Fetching GBIF data for: ${taxonName} (ID: ${taxonId})`);
-            
-            // Check cache first
-            if (gbifDataCache.has(taxonId)) {
-                const cachedData = gbifDataCache.get(taxonId);
-                updateGbifCell(gbifCell, cachedData);
-                return;
-            }
-            
-            try {
-                // Get the CORRECT GBIF backbone taxonomy key
-                const gbifKey = await getCorrectGbifBackboneKey(taxonName);
-                
-                console.log(`Correct GBIF key for ${taxonName}: ${gbifKey}`);
-                
-                let gbifCount = 0;
-                let gbifSpeciesUrl = null;
-                
-                if (gbifKey) {
-                    // Get GBIF occurrence count for Luxembourg using the correct key
-                    const countryCode = "LU";
-                    const gbifOccurrenceUrl = `https://api.gbif.org/v1/occurrence/search?taxonKey=${gbifKey}&country=${countryCode}&limit=0`;
-                    
-                    try {
-                        logApiCall(`GBIF Occurrences: ${taxonName} (Backbone Key: ${gbifKey})`);
-                        console.log(`Fetching occurrences from: ${gbifOccurrenceUrl}`);
-                        
-                        const gbifResponse = await fetch(gbifOccurrenceUrl);
-                        const gbifData = await gbifResponse.json();
-                        gbifCount = gbifData.count || 0;
-                        gbifSpeciesUrl = `https://www.gbif.org/species/${gbifKey}`;
-                        
-                        console.log(`Found ${gbifCount} occurrences for ${taxonName}`);
-                    } catch (error) {
-                        console.error(`Error fetching GBIF occurrences for ${taxonName}:`, error);
-                    }
-                }
-                
-                const result = {
-                    count: gbifCount,
-                    gbifKey: gbifKey,
-                    taxonId: taxonId,
-                    taxonName: taxonName,
-                    gbifSpeciesUrl: gbifSpeciesUrl
-                };
-                
-                // Cache the result
-                gbifDataCache.set(taxonId, result);
-                updateGbifCell(gbifCell, result);
-                
-            } catch (error) {
-                console.error(`Error fetching GBIF data for ${taxonName}:`, error);
-                gbifCell.innerHTML = '<span class="gbif-error">Error</span>';
-                gbifCell.classList.remove('gbif-loading');
-                gbifCell.classList.add('gbif-error');
-                
-                // Cache the error result too
-                gbifDataCache.set(taxonId, {
-                    count: 0,
-                    gbifKey: null,
-                    taxonId: taxonId,
-                    taxonName: taxonName,
-                    error: true
-                });
-            }
-        }
-
         async function getCorrectGbifBackboneKey(scientificName) {
             try {
                 // Clean the scientific name - remove HTML tags if any
                 const cleanName = scientificName.replace(/<\/?[^>]+(>|$)/g, "").trim();
                 
-                console.log(`Getting GBIF backbone key for: "${cleanName}"`);
-                
                 // Use the GBIF species/match API to get the correct backbone key
-                const matchUrl = `https://api.gbif.org/v1/species/match?name=${encodeURIComponent(cleanName)}&verbose=true`;
-                logApiCall(`GBIF Match: ${cleanName}`);
-                
-                console.log(`Match URL: ${matchUrl}`);
+                const matchUrl = `https://api.gbif.org/v1/species/match?name=${encodeURIComponent(cleanName)}`;
                 
                 const response = await fetch(matchUrl);
                 if (!response.ok) {
-                    throw new Error(`GBIF match failed: ${response.status}`);
+                    return null;
                 }
                 
                 const data = await response.json();
-                console.log(`GBIF match response:`, data);
                 
                 // Check if we got a good match
                 if (data.matchType && data.matchType !== "NONE" && data.usageKey) {
-                    console.log(`Found match: ${data.scientificName} (key: ${data.usageKey}, matchType: ${data.matchType})`);
                     return data.usageKey;
                 }
                 
-                // If no good match, try search as fallback
-                console.log(`No good match found, trying search...`);
-                const searchUrl = `https://api.gbif.org/v1/species/search?q=${encodeURIComponent(cleanName)}&limit=5`;
-                const searchResponse = await fetch(searchUrl);
-                const searchData = await searchResponse.json();
-                
-                if (searchData.results && searchData.results.length > 0) {
-                    // Try to find exact match first
-                    for (const result of searchData.results) {
-                        if (result.scientificName && result.scientificName.toLowerCase() === cleanName.toLowerCase()) {
-                            console.log(`Found exact search match: ${result.scientificName} (key: ${result.key})`);
-                            return result.key;
-                        }
-                        if (result.canonicalName && result.canonicalName.toLowerCase() === cleanName.toLowerCase()) {
-                            console.log(`Found canonical search match: ${result.canonicalName} (key: ${result.key})`);
-                            return result.key;
-                        }
-                    }
-                    
-                    // If no exact match, take the first result
-                    console.log(`No exact match, using first search result: ${searchData.results[0].scientificName} (key: ${searchData.results[0].key})`);
-                    return searchData.results[0].key;
-                }
-                
-                console.log(`No results found in GBIF`);
                 return null;
                 
             } catch (error) {
@@ -860,8 +881,6 @@
 
         function updateGbifCell(cell, data) {
             cell.classList.remove('gbif-loading', 'gbif-error');
-            
-            console.log(`Updating GBIF cell with data:`, data);
             
             if (data.error) {
                 cell.innerHTML = '<span class="gbif-error">Error</span>';
@@ -904,7 +923,9 @@
                 const datasets = Object.keys(years).sort((a, b) => b - a).map((year, index) => ({
                     label: year,
                     data: allWeeks.map(w => years[year][w] || 0),
-                    borderColor: `hsl(${(index * 60) % 360}, 70%, 50%)`,
+                    // Better contrasting colors with more saturation for older years
+                    const hues = [0, 30, 60, 120, 180, 240, 300]; // Red, orange, yellow, green, cyan, blue, purple
+                    borderColor: `hsl(${hues[index % hues.length]}, ${70 + (index * 2)}%, ${55 - (index * 3)}%)`,
                     fill: false,
                 }));
 
