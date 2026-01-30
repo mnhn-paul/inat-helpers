@@ -479,67 +479,85 @@
         }
 
         function sortTable(columnIndex) {
-            const rows = Array.from(document.getElementById('data-table').rows);
+    const rows = Array.from(document.getElementById('data-table').rows);
+    
+    // Update order numbers before sorting
+    updateOrderNumbers();
+
+    rows.sort((a, b) => {
+        // Helper function to extract numeric value from any cell
+        function extractNumericValue(cell) {
+            // If it's a simple number
+            if (cell.textContent && !isNaN(parseFloat(cell.textContent))) {
+                return parseFloat(cell.textContent);
+            }
             
-            // Update order numbers before sorting
-            updateOrderNumbers();
-
-            rows.sort((a, b) => {
-                const cellA = a.cells[columnIndex].textContent;
-                const cellB = b.cells[columnIndex].textContent;
-
-                const valueA = isNaN(cellA) ? cellA : parseFloat(cellA);
-                const valueB = isNaN(cellB) ? cellB : parseFloat(cellB);
-
-                // Primary sort
-                if (valueA < valueB) return sortAscending ? -1 : 1;
-                if (valueA > valueB) return sortAscending ? 1 : -1;
-                
-                // Secondary sort by GBIF LU (column 6) when primary values are equal
-                if (columnIndex !== 6) { // Don't do secondary sort if we're already sorting by GBIF LU
-                    let gbifA = 0;
-                    let gbifB = 0;
-                    
-                    // Extract GBIF count from cell (could be a link or just text)
-                    const gbifCellA = a.cells[6];
-                    const gbifCellB = b.cells[6];
-                    
-                    // Try to parse GBIF count from cell content
-                    if (gbifCellA.textContent && !isNaN(gbifCellA.textContent)) {
-                        gbifA = parseFloat(gbifCellA.textContent);
-                    } else if (gbifCellA.innerHTML) {
-                        // Try to extract number from link or span
-                        const matchA = gbifCellA.innerHTML.match(/>(\d[\d,\.]*)</);
-                        if (matchA) {
-                            gbifA = parseFloat(matchA[1].replace(/,/g, ''));
-                        }
-                    }
-                    
-                    if (gbifCellB.textContent && !isNaN(gbifCellB.textContent)) {
-                        gbifB = parseFloat(gbifCellB.textContent);
-                    } else if (gbifCellB.innerHTML) {
-                        const matchB = gbifCellB.innerHTML.match(/>(\d[\d,\.]*)</);
-                        if (matchB) {
-                            gbifB = parseFloat(matchB[1].replace(/,/g, ''));
-                        }
-                    }
-                    
-                    if (gbifA < gbifB) return -1; // Higher GBIF counts first (descending)
-                    if (gbifA > gbifB) return 1; // Higher GBIF counts first (descending)
-                }
-                
-                return 0;
-            });
-
-            // Append sorted rows and update order numbers
-            rows.forEach(row => document.getElementById('data-table').appendChild(row));
-            updateOrderNumbers();
+            // If it contains HTML (like links), extract the number
+            const html = cell.innerHTML;
             
-            // Update table header classes
-            document.querySelectorAll('th').forEach(th => th.classList.remove('sorted-asc', 'sorted-desc'));
-            const header = document.querySelector(`th[data-column="${columnIndex}"]`);
-            header.classList.add(sortAscending ? 'sorted-asc' : 'sorted-desc');
+            // Try patterns to find numbers:
+            // 1. Numbers at the beginning: "123</a>"
+            // 2. Numbers after >: ">123<" or ">1,234<"
+            // 3. Numbers anywhere: just find the first number
+            
+            // Remove all HTML tags first
+            const textOnly = html.replace(/<[^>]*>/g, '');
+            
+            // Find the first number (with optional commas)
+            const numberMatch = textOnly.match(/([\d,]+)/);
+            if (numberMatch) {
+                // Remove commas and convert to number
+                return parseFloat(numberMatch[1].replace(/,/g, ''));
+            }
+            
+            return 0; // Default if no number found
         }
+        
+        // Helper function to extract GBIF count specifically
+        function extractGbifCount(cell) {
+            const value = extractNumericValue(cell);
+            return isNaN(value) ? 0 : value;
+        }
+        
+        // PRIMARY SORT: The clicked column
+        const primaryA = extractNumericValue(a.cells[columnIndex]);
+        const primaryB = extractNumericValue(b.cells[columnIndex]);
+        
+        // For numeric comparison (ascending/descending based on sortAscending)
+        if (!isNaN(primaryA) && !isNaN(primaryB)) {
+            if (primaryA < primaryB) return sortAscending ? -1 : 1;
+            if (primaryA > primaryB) return sortAscending ? 1 : -1;
+        } else {
+            // For non-numeric values (like taxon names)
+            const textA = a.cells[columnIndex].textContent.trim();
+            const textB = b.cells[columnIndex].textContent.trim();
+            if (textA < textB) return sortAscending ? -1 : 1;
+            if (textA > textB) return sortAscending ? 1 : -1;
+        }
+        
+        // SECONDARY SORT: GBIF LU column (column 6) when primary values are equal
+        if (columnIndex !== 6) { // Skip if already sorting by GBIF
+            const gbifA = extractGbifCount(a.cells[6]);
+            const gbifB = extractGbifCount(b.cells[6]);
+            
+            // Sort GBIF in descending order (higher numbers first) as secondary sort
+            if (gbifA < gbifB) return 1;
+            if (gbifA > gbifB) return -1;
+        }
+        
+        return 0; // Equal values
+    });
+
+    // Append sorted rows and update order numbers
+    rows.forEach(row => document.getElementById('data-table').appendChild(row));
+    updateOrderNumbers();
+    
+    // Update table header classes
+    document.querySelectorAll('th').forEach(th => th.classList.remove('sorted-asc', 'sorted-desc'));
+    const header = document.querySelector(`th[data-column="${columnIndex}"]`);
+    header.classList.add(sortAscending ? 'sorted-asc' : 'sorted-desc');
+    
+}
 
         function updateOrderNumbers() {
             const rows = document.querySelectorAll('#data-table tr');
@@ -920,11 +938,13 @@
                 }
 
                 const allWeeks = Array.from({ length: 53 }, (_, i) => i + 1);
+                
+                // Better contrasting colors with more saturation for older years
+                const hues = [0, 30, 60, 120, 180, 240, 300]; // Red, orange, yellow, green, cyan, blue, purple
+                
                 const datasets = Object.keys(years).sort((a, b) => b - a).map((year, index) => ({
                     label: year,
                     data: allWeeks.map(w => years[year][w] || 0),
-                    // Better contrasting colors with more saturation for older years
-                    const hues = [0, 30, 60, 120, 180, 240, 300]; // Red, orange, yellow, green, cyan, blue, purple
                     borderColor: `hsl(${hues[index % hues.length]}, ${70 + (index * 2)}%, ${55 - (index * 3)}%)`,
                     fill: false,
                 }));
