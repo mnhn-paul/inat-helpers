@@ -232,15 +232,18 @@
         <div class="section">
             <h2>2. Configure Analysis</h2>
             <p style="margin-bottom: 20px; color: #666; line-height: 1.5;">
-                Choose a start date to evaluate the ratio of observations made since that date relative to all observations.
-                A ratio of 1 therefore indicates that the first record of this species/genus on iNaturalist was made since that date.
+                a) For Identification Completedness, choose "Verifiable" for all observations with sufficient metadata (default; recommended),<br>
+                and "Validated" for those by the community (= Research grade on iNaturalist).<br>
+                b) For Taxonomic Rank, choose whether you are also (not exclusive) interested in observations only identified to the genus level.<br>
+                c) For Start date, choose a date to evaluate the ratio of observations made since that date relative to all observations.<br>
+                A ratio of 1 therefore indicates that the first record of this species/genus on iNaturalist was made since that date. 
             </p>
             <div class="filter-grid">
                 <div class="filter-group">
-                    <label for="quality-filter">Quality Filter:</label>
+                    <label for="quality-filter">Identification Completedness:</label>
                     <select id="quality-filter">
                         <option value="verifiable=true">Verifiable</option>
-                        <option value="quality_grade=research">Research Grade</option>
+                        <option value="quality_grade=research">Validated</option>
                     </select>
                 </div>
                 
