@@ -234,9 +234,9 @@
             <p style="margin-bottom: 20px; color: #666; line-height: 1.5;">
                 a) For Identification Completedness, choose "Verifiable" for all observations with sufficient metadata (default; recommended),<br>
                 and "Validated" for those by the community (= Research grade on iNaturalist).<br>
-                b) For Taxonomic Rank, choose whether you are also (not exclusive) interested in observations only identified to the genus level.<br>
+                b) For Taxonomic Rank, choose whether you are also (not exclusive) interested in observations only identified to the genus level (default).<br>
                 c) For Start date, choose a date to evaluate the ratio of observations made since that date relative to all observations.<br>
-                A ratio of 1 therefore indicates that the first record of this species/genus on iNaturalist was made since that date. 
+                A ratio of 1 therefore indicates that the first record of this species/genus on iNaturalist was made since that date (if unsure, try 01-01-2020). 
             </p>
             <div class="filter-grid">
                 <div class="filter-group">
@@ -324,6 +324,48 @@
             return new Date().toISOString().split('T')[0];
         }
 
+        // URL sync helpers
+        function syncToURL() {
+            const params = new URLSearchParams();
+            const quality = document.getElementById('quality-filter').value;
+            const rank = document.getElementById('taxonomic-rank').value;
+            const startDate = document.getElementById('start-date').value;
+            if (quality) params.set('quality', quality);
+            if (rank) params.set('rank', rank);
+            if (startDate) params.set('d1', startDate);
+            if (selectedTaxonId) params.set('taxon_id', selectedTaxonId);
+            if (selectedTaxonName) params.set('taxon_name', selectedTaxonName);
+            history.replaceState(null, '', '?' + params.toString());
+        }
+
+        async function loadFromURL() {
+            const params = new URLSearchParams(window.location.search);
+            const quality = params.get('quality');
+            const rank = params.get('rank');
+            const startDate = params.get('d1');
+            const taxonId = params.get('taxon_id');
+            const taxonName = params.get('taxon_name');
+            if (quality) {
+                const el = document.getElementById('quality-filter');
+                if ([...el.options].some(o => o.value === quality)) el.value = quality;
+            }
+            if (rank) {
+                const el = document.getElementById('taxonomic-rank');
+                if ([...el.options].some(o => o.value === rank)) el.value = rank;
+            }
+            if (startDate) document.getElementById('start-date').value = startDate;
+            if (taxonId && taxonName) {
+                try {
+                    const res = await fetch(`https://api.inaturalist.org/v1/taxa/${taxonId}`);
+                    const data = await res.json();
+                    const rank = data.results[0]?.rank || '';
+                    selectTaxon(parseInt(taxonId), taxonName, rank);
+                } catch (e) {
+                    selectTaxon(parseInt(taxonId), taxonName, '');
+                }
+            }
+        }
+
         // Event Listeners
         taxonInput.addEventListener('input', () => {
             clearTimeout(debounceTimeout);
@@ -337,6 +379,7 @@
             taxonInput.value = '';
             suggestionsContainer.innerHTML = '';
             fetchGbifBtn.disabled = true;
+            syncToURL();
         });
 
         fetchGbifBtn.addEventListener('click', async () => {
@@ -427,6 +470,7 @@
             suggestionsContainer.innerHTML = '';
             taxonInput.value = taxonName;
             fetchGbifBtn.disabled = false;
+            syncToURL();
         }
 
         // Functions for data table and analysis
@@ -503,6 +547,12 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
+            loadFromURL();
+
+            document.getElementById('quality-filter').addEventListener('change', syncToURL);
+            document.getElementById('taxonomic-rank').addEventListener('change', syncToURL);
+            document.getElementById('start-date').addEventListener('change', syncToURL);
+
             document.querySelectorAll('.sortable').forEach(header => {
                 header.addEventListener('click', () => {
                     const columnIndex = parseInt(header.dataset.column, 10);
