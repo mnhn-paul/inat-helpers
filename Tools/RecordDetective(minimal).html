@@ -232,10 +232,12 @@
         <div class="section">
             <h2>2. Configure Analysis</h2>
             <p style="margin-bottom: 20px; color: #666; line-height: 1.5;">
-                a) For Identification Completedness, choose "Verifiable" for all observations with sufficient metadata (default; recommended),<br>
-                and "Validated" for those by the community (= Research grade on iNaturalist).<br>
+                a) For Identification Completedness, choose:<br>- "Verifiable" for all observations with sufficient metadata that were identified at least once (default; recommended)<br>
+                - "Research Grade" for those whose identification was validated by the iNaturalist community.<br>
+                <br>
                 b) For Taxonomic Rank, choose whether you are also (not exclusive) interested in observations only identified to the genus level (default).<br>
-                c) For Start date, choose a date to evaluate the ratio of observations made since that date relative to all observations.<br>
+                <br>
+                c) For Start date, choose a date to evaluate the ratio of observations made since that date relative to all observations.
                 A ratio of 1 therefore indicates that the first record of this species/genus on iNaturalist was made since that date (if unsure, try 01-01-2020). 
             </p>
             <div class="filter-grid">
@@ -243,7 +245,7 @@
                     <label for="quality-filter">Identification Completedness:</label>
                     <select id="quality-filter">
                         <option value="verifiable=true">Verifiable</option>
-                        <option value="quality_grade=research">Validated</option>
+                        <option value="quality_grade=research">Research Grade</option>
                     </select>
                 </div>
                 
@@ -276,14 +278,13 @@
             <table>
                 <thead>
                     <tr>
-                        <th class="sortable" data-column="0">Order</th>
-                        <th class="sortable" data-column="1">Taxon Name</th>
-                        <th class="sortable" data-column="2">Taxon ID</th>
-                        <th class="sortable" data-column="3">iNat (since start date)</th>
-                        <th class="sortable" data-column="4">iNat Total</th>
-                        <th class="sortable sorted-desc" data-column="5">iNat Ratio</th>
-                        <th class="sortable" data-column="6">GBIF LU</th>
-                        <th class="sortable" data-column="7">Photo</th>
+                        <th class="sortable" data-column="0">Taxon Name</th>
+                        <th class="sortable" data-column="1">Taxon ID</th>
+                        <th class="sortable" data-column="2">iNat (since start date)</th>
+                        <th class="sortable" data-column="3">iNat Total</th>
+                        <th class="sortable sorted-desc" data-column="4">iNat Ratio</th>
+                        <th class="sortable" data-column="5">GBIF LU</th>
+                        <th class="sortable" data-column="6">Photo</th>
                     </tr>
                 </thead>
                 <tbody id="data-table"></tbody>
@@ -485,66 +486,53 @@
         }
 
         function sortTable(columnIndex) {
-            const rows = Array.from(document.getElementById('data-table').rows);
-            
-            updateOrderNumbers();
+    const rows = Array.from(document.getElementById('data-table').rows);
+    
 
-            rows.sort((a, b) => {
-                function extractNumericValue(cell) {
-                    if (cell.textContent && !isNaN(parseFloat(cell.textContent))) {
-                        return parseFloat(cell.textContent);
-                    }
-                    const html = cell.innerHTML;
-                    const textOnly = html.replace(/<[^>]*>/g, '');
-                    const numberMatch = textOnly.match(/([\d,]+)/);
-                    if (numberMatch) {
-                        return parseFloat(numberMatch[1].replace(/,/g, ''));
-                    }
-                    return 0;
-                }
-                
-                function extractGbifCount(cell) {
-                    const value = extractNumericValue(cell);
-                    return isNaN(value) ? 0 : value;
-                }
-                
-                const primaryA = extractNumericValue(a.cells[columnIndex]);
-                const primaryB = extractNumericValue(b.cells[columnIndex]);
-                
-                if (!isNaN(primaryA) && !isNaN(primaryB)) {
-                    if (primaryA < primaryB) return sortAscending ? -1 : 1;
-                    if (primaryA > primaryB) return sortAscending ? 1 : -1;
-                } else {
-                    const textA = a.cells[columnIndex].textContent.trim();
-                    const textB = b.cells[columnIndex].textContent.trim();
-                    if (textA < textB) return sortAscending ? -1 : 1;
-                    if (textA > textB) return sortAscending ? 1 : -1;
-                }
-                
-                if (columnIndex !== 6) {
-                    const gbifA = extractGbifCount(a.cells[6]);
-                    const gbifB = extractGbifCount(b.cells[6]);
-                    if (gbifA < gbifB) return 1;
-                    if (gbifA > gbifB) return -1;
-                }
-                
-                return 0;
-            });
 
-            rows.forEach(row => document.getElementById('data-table').appendChild(row));
-            updateOrderNumbers();
-            
-            document.querySelectorAll('th').forEach(th => th.classList.remove('sorted-asc', 'sorted-desc'));
-            const header = document.querySelector(`th[data-column="${columnIndex}"]`);
-            header.classList.add(sortAscending ? 'sorted-asc' : 'sorted-desc');
+    rows.sort((a, b) => {
+        // Helper to extract numeric value from cell content
+        function extractNumericValue(cell) {
+            if (cell.textContent && !isNaN(parseFloat(cell.textContent))) {
+                return parseFloat(cell.textContent);
+            }
+            const html = cell.innerHTML;
+            const textOnly = html.replace(/<[^>]*>/g, '');
+            const numberMatch = textOnly.match(/([\d,]+)/);
+            if (numberMatch) {
+                return parseFloat(numberMatch[1].replace(/,/g, ''));
+            }
+            return 0;
         }
 
-        function updateOrderNumbers() {
-            const rows = document.querySelectorAll('#data-table tr');
-            rows.forEach((row, index) => {
-                row.cells[0].textContent = index + 1;
-            });
+        const cellA = a.cells[columnIndex];
+        const cellB = b.cells[columnIndex];
+
+        // Try numeric sorting first
+        const numA = extractNumericValue(cellA);
+        const numB = extractNumericValue(cellB);
+        if (!isNaN(numA) && !isNaN(numB)) {
+            if (numA < numB) return sortAscending ? -1 : 1;
+            if (numA > numB) return sortAscending ? 1 : -1;
         }
+
+        // Fallback to text sorting
+        const textA = cellA.textContent.trim();
+        const textB = cellB.textContent.trim();
+        if (textA < textB) return sortAscending ? -1 : 1;
+        if (textA > textB) return sortAscending ? 1 : -1;
+
+        return 0;
+    });
+
+    // Re-append sorted rows
+    rows.forEach(row => document.getElementById('data-table').appendChild(row));
+
+    // Update header indicators
+    document.querySelectorAll('th').forEach(th => th.classList.remove('sorted-asc', 'sorted-desc'));
+    const header = document.querySelector(`th[data-column="${columnIndex}"]`);
+    header.classList.add(sortAscending ? 'sorted-asc' : 'sorted-desc');
+}
 
         document.addEventListener('DOMContentLoaded', () => {
             loadFromURL();
@@ -631,10 +619,10 @@
 
             const rows = document.querySelectorAll('#data-table tr');
             rows.forEach(row => {
-                const taxonId = row.cells[2].textContent.trim();
-                const countCell = row.cells[3];
-                const totalCell = row.cells[4];
-                const ratioCell = row.cells[5];
+                const taxonId = row.cells[1].textContent.trim();
+                const countCell = row.cells[2];
+                const totalCell = row.cells[3];
+                const ratioCell = row.cells[4];
                 const total = allResults.find(item => item.taxon.id === parseInt(taxonId));
 
                 if (total) {
@@ -651,7 +639,7 @@
                 }
             });
             
-            sortTable(5);
+            sortTable(4);
         }
 
         function populateTable(data, startDate, endDate, qualityFilter) {
@@ -666,7 +654,6 @@
                 const photoUrl = item.taxon.default_photo ? item.taxon.default_photo.square_url : '';
 
                 row.innerHTML = `
-                    <td>${index + 1}</td>
                     <td class="italic">${taxonName}</td>
                     <td><a href="https://www.inaturalist.org/taxa/${taxonId}" target="_blank">${taxonId}</a></td>
                     <td><a href="https://inaturalist.lu/observations?taxon_id=${taxonId}&${qualityFilter}&d1=${startDate}&d2=${endDate}&place_id=120582" target="_blank">${count}</a></td>
@@ -699,8 +686,8 @@
             const taxonData = [];
             for (let i = 0; i < rows.length; i++) {
                 const row = rows[i];
-                const taxonId = row.cells[2].textContent.trim();
-                const taxonName = row.cells[1].textContent.trim();
+                const taxonId = row.cells[1].textContent.trim();
+                const taxonName = row.cells[0].textContent.trim();
                 taxonData.push({ taxonId, taxonName, row });
             }
             
@@ -730,7 +717,7 @@
             
             if (gbifKeys.length === 0) {
                 rows.forEach(row => {
-                    const gbifCell = row.cells[6];
+                    const gbifCell = row.cells[5];
                     gbifCell.innerHTML = '<span title="No GBIF ID found">0</span>';
                     gbifCell.classList.remove('gbif-loading');
                 });
@@ -780,7 +767,7 @@
             gbifProgressBar.textContent = 'Updating table...';
             
             taxonData.forEach(item => {
-                const gbifCell = item.row.cells[6];
+                const gbifCell = item.row.cells[5];
                 const gbifKey = taxonGbifKeyMap.get(item.taxonId);
                 
                 if (gbifKey) {
