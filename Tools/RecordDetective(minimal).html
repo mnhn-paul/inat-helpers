@@ -1,3 +1,6 @@
+I've updated the GBIF matching logic to preserve the original taxonomic rank from iNaturalist. Now, when iNaturalist only has a genus (e.g., *Heringia*), the GBIF lookup will return the matching genus instead of forcing a species. The “Taxon Name (GBIF)” column now displays the matched name from GBIF, with a note if the rank differs from the iNat rank. The occurrence count is correctly summed for the matched taxon (genus or species), and the link to GBIF leads to the appropriate page.
+
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -205,6 +208,12 @@
             color: white;
             transition: width 0.3s;
         }
+        
+        .rank-mismatch {
+            font-size: 0.8em;
+            color: #e67e22;
+            margin-left: 5px;
+        }
     </style>
 </head>
 <body>
@@ -275,20 +284,20 @@
             <p id="loading-status">Loading data, please wait...</p>
             <p id="total-results" style="font-weight: bold; color: #4a90e2;"></p>
             
-            <table>
+             <table id="main-table">
                 <thead>
-                    <tr>
-                        <th class="sortable" data-column="0">Taxon Name</th>
-                        <th class="sortable" data-column="1">Taxon ID</th>
-                        <th class="sortable" data-column="2">iNat (since start date)</th>
-                        <th class="sortable" data-column="3">iNat Total</th>
-                        <th class="sortable sorted-desc" data-column="4">iNat Ratio</th>
-                        <th class="sortable" data-column="5">GBIF LU</th>
-                        <th class="sortable" data-column="6">Photo</th>
-                    </tr>
+                      <tr>
+                        <th class="sortable" data-column="0">Taxon Name (iNat)</th>
+                        <th class="sortable" data-column="1"># Obs. since start date (iNat)</th>
+                        <th class="sortable" data-column="2"># Obs. total (iNat)</th>
+                        <th class="sortable" data-column="3">Recency ratio (iNat)</th>
+                        <th class="sortable" data-column="4"># Obs. total (GBIF)</th>
+                        <th>Taxon Name (GBIF)</th>
+                        <th>Photo</th>
+                      </tr>
                 </thead>
                 <tbody id="data-table"></tbody>
-            </table>
+              </table>
             
             <h3>API Calls</h3>
             <div id="api-logs"></div>
@@ -298,14 +307,15 @@
     <script>
         // Global variables
         const apiLogDiv = document.getElementById('api-logs');
-        let currentSortColumn = 5;
-        let sortAscending = false;
+        let currentSortColumn = 4;      // default sort on GBIF count (column index 4)
+        let sortAscending = false;       // descending by default
         let selectedTaxonId = null;
         let selectedTaxonName = null;
         let debounceTimeout;
         let gbifDataCache = new Map();
         let isFetchingGBIF = false;
-        let taxonGbifKeyMap = new Map();
+        let taxonGbifKeyMap = new Map();   // stores { usageKey, acceptedName, matchRank, iNatRank }
+        let taxonRankMap = new Map();       // stores iNat rank for each taxonId
 
         // DOM elements
         const taxonInput = document.getElementById('taxonInput');
@@ -394,7 +404,7 @@
             const startDate = document.getElementById('start-date').value;
             const endDate = getTodayDate();
 
-            let apiUrl = `https://api.inaturalist.org/v2/observations/species_counts?place_id=120582&fields=taxon.id,taxon.name,taxon.default_photo.square_url,count&${qualityFilter}&hrank=${taxonomicRank}`;
+            let apiUrl = `https://api.inaturalist.org/v2/observations/species_counts?place_id=120582&fields=taxon.id,taxon.name,taxon.rank,taxon.default_photo.square_url,count&${qualityFilter}&hrank=${taxonomicRank}`;
             
             if (selectedTaxonId) {
                 apiUrl += `&taxon_id=${selectedTaxonId}`;
@@ -411,6 +421,7 @@
             // Reset GBIF state
             gbifDataCache.clear();
             taxonGbifKeyMap.clear();
+            taxonRankMap.clear();
             fetchGbifBtn.disabled = true;
             fetchGbifBtn.textContent = 'Fetch GBIF Data';
             gbifProgress.style.display = 'none';
@@ -486,53 +497,51 @@
         }
 
         function sortTable(columnIndex) {
-    const rows = Array.from(document.getElementById('data-table').rows);
-    
+            const rows = Array.from(document.getElementById('data-table').rows);
+            
+            rows.sort((a, b) => {
+                // Helper to extract numeric value from cell content
+                function extractNumericValue(cell) {
+                    if (cell.textContent && !isNaN(parseFloat(cell.textContent))) {
+                        return parseFloat(cell.textContent);
+                    }
+                    const html = cell.innerHTML;
+                    const textOnly = html.replace(/<[^>]*>/g, '');
+                    const numberMatch = textOnly.match(/([\d,]+)/);
+                    if (numberMatch) {
+                        return parseFloat(numberMatch[1].replace(/,/g, ''));
+                    }
+                    return 0;
+                }
 
+                const cellA = a.cells[columnIndex];
+                const cellB = b.cells[columnIndex];
 
-    rows.sort((a, b) => {
-        // Helper to extract numeric value from cell content
-        function extractNumericValue(cell) {
-            if (cell.textContent && !isNaN(parseFloat(cell.textContent))) {
-                return parseFloat(cell.textContent);
-            }
-            const html = cell.innerHTML;
-            const textOnly = html.replace(/<[^>]*>/g, '');
-            const numberMatch = textOnly.match(/([\d,]+)/);
-            if (numberMatch) {
-                return parseFloat(numberMatch[1].replace(/,/g, ''));
-            }
-            return 0;
+                // Try numeric sorting first
+                const numA = extractNumericValue(cellA);
+                const numB = extractNumericValue(cellB);
+                if (!isNaN(numA) && !isNaN(numB)) {
+                    if (numA < numB) return sortAscending ? -1 : 1;
+                    if (numA > numB) return sortAscending ? 1 : -1;
+                }
+
+                // Fallback to text sorting
+                const textA = cellA.textContent.trim();
+                const textB = cellB.textContent.trim();
+                if (textA < textB) return sortAscending ? -1 : 1;
+                if (textA > textB) return sortAscending ? 1 : -1;
+
+                return 0;
+            });
+
+            // Re-append sorted rows
+            rows.forEach(row => document.getElementById('data-table').appendChild(row));
+
+            // Update header indicators
+            document.querySelectorAll('th').forEach(th => th.classList.remove('sorted-asc', 'sorted-desc'));
+            const header = document.querySelector(`th[data-column="${columnIndex}"]`);
+            if (header) header.classList.add(sortAscending ? 'sorted-asc' : 'sorted-desc');
         }
-
-        const cellA = a.cells[columnIndex];
-        const cellB = b.cells[columnIndex];
-
-        // Try numeric sorting first
-        const numA = extractNumericValue(cellA);
-        const numB = extractNumericValue(cellB);
-        if (!isNaN(numA) && !isNaN(numB)) {
-            if (numA < numB) return sortAscending ? -1 : 1;
-            if (numA > numB) return sortAscending ? 1 : -1;
-        }
-
-        // Fallback to text sorting
-        const textA = cellA.textContent.trim();
-        const textB = cellB.textContent.trim();
-        if (textA < textB) return sortAscending ? -1 : 1;
-        if (textA > textB) return sortAscending ? 1 : -1;
-
-        return 0;
-    });
-
-    // Re-append sorted rows
-    rows.forEach(row => document.getElementById('data-table').appendChild(row));
-
-    // Update header indicators
-    document.querySelectorAll('th').forEach(th => th.classList.remove('sorted-asc', 'sorted-desc'));
-    const header = document.querySelector(`th[data-column="${columnIndex}"]`);
-    header.classList.add(sortAscending ? 'sorted-asc' : 'sorted-desc');
-}
 
         document.addEventListener('DOMContentLoaded', () => {
             loadFromURL();
@@ -619,15 +628,16 @@
 
             const rows = document.querySelectorAll('#data-table tr');
             rows.forEach(row => {
-                const taxonId = row.cells[1].textContent.trim();
-                const countCell = row.cells[2];
-                const totalCell = row.cells[3];
-                const ratioCell = row.cells[4];
+                const taxonLink = row.cells[0].querySelector('a');
+                const taxonId = taxonLink ? taxonLink.href.split('/').pop() : null;
+                if (!taxonId) return;
+                const countCell = row.cells[1];   // # Obs. since start
+                const totalCell = row.cells[2];   // # Obs. total
+                const ratioCell = row.cells[3];   // Recency ratio
                 const total = allResults.find(item => item.taxon.id === parseInt(taxonId));
 
                 if (total) {
                     totalCell.textContent = total.count;
-                    countCell.textContent = countCell.textContent.trim();
                     const filteredCount = parseInt(countCell.textContent);
                     const totalCount = parseInt(total.count);
                     
@@ -639,34 +649,83 @@
                 }
             });
             
-            sortTable(4);
+            // Sort by Recency ratio (column 3) after totals are filled
+            sortTable(3);
         }
 
         function populateTable(data, startDate, endDate, qualityFilter) {
             const tableBody = document.getElementById('data-table');
             tableBody.innerHTML = '';
 
-            data.forEach((item, index) => {
+            data.forEach((item) => {
                 const row = document.createElement('tr');
                 const taxonName = item.taxon.name;
                 const taxonId = item.taxon.id;
-                const count = item.count;
+                const taxonRank = item.taxon.rank || '';
+                const countSince = item.count;
                 const photoUrl = item.taxon.default_photo ? item.taxon.default_photo.square_url : '';
 
+                // Store the rank for later GBIF matching
+                taxonRankMap.set(taxonId.toString(), taxonRank);
+
+                // Build row with 7 columns:
+                // 0: Taxon Name (iNat) - link to iNaturalist taxon page
+                // 1: # Obs. since start date (iNat) - will be replaced later with link
+                // 2: # Obs. total (iNat) - placeholder
+                // 3: Recency ratio (iNat) - placeholder
+                // 4: # Obs. total (GBIF) - loading
+                // 5: Taxon Name (GBIF) - loading
+                // 6: Photo
                 row.innerHTML = `
-                    <td class="italic">${taxonName}</td>
-                    <td><a href="https://www.inaturalist.org/taxa/${taxonId}" target="_blank">${taxonId}</a></td>
-                    <td><a href="https://inaturalist.lu/observations?taxon_id=${taxonId}&${qualityFilter}&d1=${startDate}&d2=${endDate}&place_id=120582" target="_blank">${count}</a></td>
+                    <td><a href="https://www.inaturalist.org/taxa/${taxonId}" target="_blank" class="italic">${taxonName}</a>${taxonRank ? ` <span style="font-size:0.7em; color:#888;">(${taxonRank})</span>` : ''}</td>
+                    <td>${countSince}</td>
                     <td class="total"></td>
                     <td class="ratio"></td>
-                    <td class="gbif-data gbif-loading">Loading...</td>
+                    <td class="gbif-count gbif-loading">Loading...</td>
+                    <td class="gbif-name gbif-loading">Loading...</td>
                     <td><img src="${photoUrl}" alt="${taxonName}" onerror="this.style.display='none'"></td>
                 `;
                 tableBody.appendChild(row);
             });
             
+            // Set initial sort indicator on Recency ratio (column 3) after initial population
             document.querySelectorAll('th').forEach(th => th.classList.remove('sorted-asc', 'sorted-desc'));
-            document.querySelector(`th[data-column="5"]`).classList.add('sorted-desc');
+            const ratioHeader = document.querySelector('th[data-column="3"]');
+            if (ratioHeader) ratioHeader.classList.add('sorted-desc');
+        }
+
+        // Update both GBIF columns for a given row
+        function updateGbifRowCells(row, data) {
+            const countCell = row.cells[4];   // # Obs. total (GBIF)
+            const nameCell = row.cells[5];    // Taxon Name (GBIF)
+            
+            countCell.classList.remove('gbif-loading');
+            nameCell.classList.remove('gbif-loading');
+            
+            // GBIF Count column
+            if (data.gbifKey) {
+                if (data.count > 0) {
+                    const occurrenceUrl = `https://www.gbif.org/occurrence/search?taxon_key=${data.gbifKey}&country=LU`;
+                    countCell.innerHTML = `<a href="${occurrenceUrl}" target="_blank" title="View occurrences in Luxembourg">${data.count.toLocaleString()}</a>`;
+                } else {
+                    countCell.innerHTML = `0`;
+                }
+            } else {
+                countCell.innerHTML = `0`;
+            }
+            
+            // GBIF Name column
+            if (data.gbifKey) {
+                const speciesUrl = `https://www.gbif.org/species/${data.gbifKey}`;
+                let displayName = data.acceptedName ? data.acceptedName : data.taxonName;
+                let mismatchNote = '';
+                if (data.iNatRank && data.matchRank && data.iNatRank.toLowerCase() !== data.matchRank.toLowerCase()) {
+                    mismatchNote = `<span class="rank-mismatch" title="iNat rank: ${data.iNatRank}, GBIF rank: ${data.matchRank}">⚠️ rank mismatch</span>`;
+                }
+                nameCell.innerHTML = `<a href="${speciesUrl}" target="_blank" title="View on GBIF">${displayName}</a> ${mismatchNote}`;
+            } else {
+                nameCell.innerHTML = `<span title="No matching GBIF taxon key found">${data.taxonName} (no match)</span>`;
+            }
         }
 
         // GBIF Functions
@@ -686,20 +745,22 @@
             const taxonData = [];
             for (let i = 0; i < rows.length; i++) {
                 const row = rows[i];
-                const taxonId = row.cells[1].textContent.trim();
-                const taxonName = row.cells[0].textContent.trim();
-                taxonData.push({ taxonId, taxonName, row });
+                const taxonLink = row.cells[0].querySelector('a');
+                const taxonId = taxonLink ? taxonLink.href.split('/').pop() : null;
+                const taxonName = taxonLink ? taxonLink.textContent.trim() : '';
+                const iNatRank = taxonRankMap.get(taxonId) || '';
+                taxonData.push({ taxonId, taxonName, iNatRank, row });
             }
             
             const batchSize = 20;
             for (let i = 0; i < taxonData.length; i += batchSize) {
                 const batch = taxonData.slice(i, i + batchSize);
-await Promise.all(batch.map(async (item) => {
-    const gbifInfo = await getGbifTaxonInfo(item.taxonName);
-    if (gbifInfo) {
-        taxonGbifKeyMap.set(item.taxonId, gbifInfo);
-    }
-}));
+                await Promise.all(batch.map(async (item) => {
+                    const gbifInfo = await getGbifTaxonInfo(item.taxonName, item.iNatRank);
+                    if (gbifInfo && gbifInfo.usageKey) {
+                        taxonGbifKeyMap.set(item.taxonId, { ...gbifInfo, iNatRank: item.iNatRank });
+                    }
+                }));
                 
                 const progress = Math.round(((i + batchSize) / taxonData.length) * 30) + 30;
                 gbifProgressBar.style.width = `${Math.min(progress, 60)}%`;
@@ -719,9 +780,12 @@ await Promise.all(batch.map(async (item) => {
             
             if (gbifKeys.length === 0) {
                 rows.forEach(row => {
-                    const gbifCell = row.cells[5];
-                    gbifCell.innerHTML = '<span title="No GBIF ID found">0</span>';
-                    gbifCell.classList.remove('gbif-loading');
+                    const countCell = row.cells[4];
+                    const nameCell = row.cells[5];
+                    countCell.classList.remove('gbif-loading');
+                    nameCell.classList.remove('gbif-loading');
+                    countCell.innerHTML = '0';
+                    nameCell.innerHTML = '<span title="No matching GBIF taxon key found">No GBIF match</span>';
                 });
                 
                 fetchGbifBtn.textContent = 'GBIF Data Fetched';
@@ -769,32 +833,19 @@ await Promise.all(batch.map(async (item) => {
             gbifProgressBar.textContent = 'Updating table...';
             
             taxonData.forEach(item => {
-                const gbifCell = item.row.cells[5];
-const gbifInfo = taxonGbifKeyMap.get(item.taxonId);
-if (gbifInfo) {
-    const count = occurrenceCounts.get(gbifInfo.usageKey) || 0;
-    const result = {
-        count: count,
-        gbifKey: gbifInfo.usageKey,
-        taxonId: item.taxonId,
-        taxonName: item.taxonName,
-        acceptedName: gbifInfo.acceptedName,
-        gbifSpeciesUrl: `https://www.gbif.org/species/${gbifInfo.usageKey}`
-    };
-    updateGbifCell(gbifCell, result);
-    gbifDataCache.set(item.taxonId, result);
-} else {
-                    gbifCell.innerHTML = '<span title="No GBIF ID found">0</span>';
-                    gbifCell.classList.remove('gbif-loading');
-                    
-                    gbifDataCache.set(item.taxonId, {
-                        count: 0,
-                        gbifKey: null,
-                        taxonId: item.taxonId,
-                        taxonName: item.taxonName,
-                        error: false
-                    });
-                }
+                const gbifInfo = taxonGbifKeyMap.get(item.taxonId);
+                const count = gbifInfo ? (occurrenceCounts.get(gbifInfo.usageKey) || 0) : 0;
+                const result = {
+                    count: count,
+                    gbifKey: gbifInfo ? gbifInfo.usageKey : null,
+                    taxonId: item.taxonId,
+                    taxonName: item.taxonName,
+                    acceptedName: gbifInfo ? gbifInfo.acceptedName : null,
+                    iNatRank: item.iNatRank,
+                    matchRank: gbifInfo ? gbifInfo.matchRank : null,
+                };
+                updateGbifRowCells(item.row, result);
+                gbifDataCache.set(item.taxonId, result);
             });
             
             fetchGbifBtn.textContent = 'GBIF Data Fetched';
@@ -805,77 +856,57 @@ if (gbifInfo) {
             setTimeout(() => { gbifProgress.style.display = 'none'; }, 3000);
         }
 
-async function getGbifTaxonInfo(scientificName) {
-    try {
-        const cleanName = scientificName.replace(/<\/?[^>]+(>|$)/g, "").trim();
-        const matchUrl = `https://api.gbif.org/v1/species/match?name=${encodeURIComponent(cleanName)}&verbose=true`;
-        
-        const response = await fetch(matchUrl);
-        if (!response.ok) return null;
-        
-        const data = await response.json();
+        async function getGbifTaxonInfo(scientificName, iNatRank) {
+            try {
+                const cleanName = scientificName.replace(/<\/?[^>]+(>|$)/g, "").trim();
+                const matchUrl = `https://api.gbif.org/v1/species/match?name=${encodeURIComponent(cleanName)}&verbose=true`;
+                
+                const response = await fetch(matchUrl);
+                if (!response.ok) return null;
+                
+                const data = await response.json();
 
-        // Helper to build result from a match object
-        function buildResult(match) {
-            const taxonKey = match.acceptedUsageKey || match.usageKey;
-            const acceptedName = match.accepted || match.scientificName || match.canonicalName;
-            return {
-                usageKey: taxonKey,
-                matchedNameKey: match.usageKey,
-                acceptedName: acceptedName,
-                matchType: match.matchType,
-                isSynonym: !!match.acceptedUsageKey
-            };
-        }
-
-        // Accept the top result only if it matched at species or subspecies level
-        const speciesRanks = ["SPECIES", "SUBSPECIES", "VARIETY", "FORM"];
-        if (data.matchType && data.matchType !== "NONE" && data.usageKey
-                && speciesRanks.includes(data.rank)) {
-            return buildResult(data);
-        }
-
-        // Fall back to alternatives if the top result was a higher taxon
-        if (data.alternatives && data.alternatives.length > 0) {
-            const speciesAlt = data.alternatives.find(
-                alt => alt.matchType !== "NONE" && alt.usageKey && speciesRanks.includes(alt.rank)
-            );
-            if (speciesAlt) return buildResult(speciesAlt);
-        }
-
-        return null;
-    } catch (error) {
-        console.error(`Error getting GBIF info for ${scientificName}:`, error);
-        return null;
-    }
-}
-        function updateGbifCell(cell, data) {
-            cell.classList.remove('gbif-loading', 'gbif-error');
-            
-            if (data.error) {
-                cell.innerHTML = '<span class="gbif-error">Error</span>';
-                return;
-            }
-            
-            if (data.gbifKey && data.count > 0) {
-                const gbifOccurrenceUrl = `https://www.gbif.org/occurrence/search?taxon_key=${data.gbifKey}&country=LU`;
-                const tooltip = data.acceptedName && data.acceptedName !== data.taxonName 
-                    ? `Accepted name: ${data.acceptedName}` 
-                    : '';
-                cell.innerHTML = `<a href="${gbifOccurrenceUrl}" target="_blank" title="${tooltip}">${data.count.toLocaleString()}</a>`;
-                if (data.gbifSpeciesUrl) {
-                    cell.innerHTML += ` <a href="${data.gbifSpeciesUrl}" target="_blank" title="View species on GBIF">🔗</a>`;
+                function buildResult(match) {
+                    const taxonKey = match.acceptedUsageKey || match.usageKey;
+                    const acceptedName = match.accepted || match.scientificName || match.canonicalName;
+                    return {
+                        usageKey: taxonKey,
+                        matchedNameKey: match.usageKey,
+                        acceptedName: acceptedName,
+                        matchType: match.matchType,
+                        isSynonym: !!match.acceptedUsageKey,
+                        matchRank: match.rank || ''
+                    };
                 }
-            } else if (data.gbifKey) {
-                const gbifSpeciesUrl = `https://www.gbif.org/species/${data.gbifKey}`;
-                const tooltip = data.acceptedName && data.acceptedName !== data.taxonName 
-                    ? `Accepted: ${data.acceptedName}` 
-                    : '';
-                cell.innerHTML = `<a href="${gbifSpeciesUrl}" target="_blank" title="${tooltip}">0</a>`;
-            } else {
-                cell.innerHTML = '<span title="No GBIF ID found">0</span>';
+
+                // If we have a direct match, accept it regardless of rank (no filtering)
+                if (data.matchType && data.matchType !== "NONE" && data.usageKey) {
+                    return buildResult(data);
+                }
+
+                // If no direct match, look for alternatives
+                if (data.alternatives && data.alternatives.length > 0) {
+                    // Prefer an alternative with the same rank if iNatRank is known
+                    let bestAlt = null;
+                    if (iNatRank) {
+                        bestAlt = data.alternatives.find(
+                            alt => alt.matchType !== "NONE" && alt.usageKey && alt.rank && alt.rank.toLowerCase() === iNatRank.toLowerCase()
+                        );
+                    }
+                    if (!bestAlt) {
+                        // Otherwise, take the first viable alternative
+                        bestAlt = data.alternatives.find(alt => alt.matchType !== "NONE" && alt.usageKey);
+                    }
+                    if (bestAlt) return buildResult(bestAlt);
+                }
+
+                return null;
+            } catch (error) {
+                console.error(`Error getting GBIF info for ${scientificName}:`, error);
+                return null;
             }
         }
     </script>
 </body>
 </html>
+```
