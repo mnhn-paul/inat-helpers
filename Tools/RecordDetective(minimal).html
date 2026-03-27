@@ -808,32 +808,47 @@ if (gbifInfo) {
 async function getGbifTaxonInfo(scientificName) {
     try {
         const cleanName = scientificName.replace(/<\/?[^>]+(>|$)/g, "").trim();
-        const matchUrl = `https://api.gbif.org/v1/species/match?name=${encodeURIComponent(cleanName)}`;
+        const matchUrl = `https://api.gbif.org/v1/species/match?name=${encodeURIComponent(cleanName)}&verbose=true`;
         
         const response = await fetch(matchUrl);
         if (!response.ok) return null;
         
         const data = await response.json();
-        
-        if (data.matchType && data.matchType !== "NONE" && data.usageKey) {
-            // Use acceptedUsageKey if present (for synonyms), otherwise usageKey
-            const taxonKey = data.acceptedUsageKey || data.usageKey;
-            const acceptedName = data.acceptedScientificName || data.scientificName || data.canonicalName;
+
+        // Helper to build result from a match object
+        function buildResult(match) {
+            const taxonKey = match.acceptedUsageKey || match.usageKey;
+            const acceptedName = match.accepted || match.scientificName || match.canonicalName;
             return {
-                usageKey: taxonKey,           // key to use for occurrence searches
-                matchedNameKey: data.usageKey, // optional, for debugging
+                usageKey: taxonKey,
+                matchedNameKey: match.usageKey,
                 acceptedName: acceptedName,
-                matchType: data.matchType,
-                isSynonym: !!data.acceptedUsageKey
+                matchType: match.matchType,
+                isSynonym: !!match.acceptedUsageKey
             };
         }
+
+        // Accept the top result only if it matched at species or subspecies level
+        const speciesRanks = ["SPECIES", "SUBSPECIES", "VARIETY", "FORM"];
+        if (data.matchType && data.matchType !== "NONE" && data.usageKey
+                && speciesRanks.includes(data.rank)) {
+            return buildResult(data);
+        }
+
+        // Fall back to alternatives if the top result was a higher taxon
+        if (data.alternatives && data.alternatives.length > 0) {
+            const speciesAlt = data.alternatives.find(
+                alt => alt.matchType !== "NONE" && alt.usageKey && speciesRanks.includes(alt.rank)
+            );
+            if (speciesAlt) return buildResult(speciesAlt);
+        }
+
         return null;
     } catch (error) {
         console.error(`Error getting GBIF info for ${scientificName}:`, error);
         return null;
     }
 }
-
         function updateGbifCell(cell, data) {
             cell.classList.remove('gbif-loading', 'gbif-error');
             
