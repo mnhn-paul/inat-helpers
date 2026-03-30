@@ -1,6 +1,3 @@
-I've updated the GBIF matching logic to preserve the original taxonomic rank from iNaturalist. Now, when iNaturalist only has a genus (e.g., *Heringia*), the GBIF lookup will return the matching genus instead of forcing a species. The “Taxon Name (GBIF)” column now displays the matched name from GBIF, with a note if the rank differs from the iNat rank. The occurrence count is correctly summed for the matched taxon (genus or species), and the link to GBIF leads to the appropriate page.
-
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -37,14 +34,6 @@ I've updated the GBIF matching logic to preserve the original taxonomic rank fro
         }
         .italic {
             font-style: italic;
-        }
-        #api-logs {
-            max-height: 150px;
-            overflow-y: auto;
-            background: #f9f9f9;
-            border: 1px solid #ddd;
-            padding: 10px;
-            margin-top: 20px;
         }
         #loading-status {
             color: red;
@@ -298,9 +287,6 @@ I've updated the GBIF matching logic to preserve the original taxonomic rank fro
                 </thead>
                 <tbody id="data-table"></tbody>
               </table>
-            
-            <h3>API Calls</h3>
-            <div id="api-logs"></div>
         </div>
     </div>
 
@@ -416,7 +402,6 @@ I've updated the GBIF matching logic to preserve the original taxonomic rank fro
             document.getElementById('loading-status').style.display = 'block';
             document.getElementById('total-results').textContent = '';
             document.getElementById('data-table').innerHTML = '';
-            apiLogDiv.innerHTML = '';
             
             // Reset GBIF state
             gbifDataCache.clear();
@@ -487,9 +472,7 @@ I've updated the GBIF matching logic to preserve the original taxonomic rank fro
 
         // Functions for data table and analysis
         function logApiCall(url) {
-            const logEntry = document.createElement('div');
-            logEntry.textContent = url;
-            apiLogDiv.appendChild(logEntry);
+            // API logging disabled
         }
 
         function delay(ms) {
@@ -668,14 +651,6 @@ I've updated the GBIF matching logic to preserve the original taxonomic rank fro
                 // Store the rank for later GBIF matching
                 taxonRankMap.set(taxonId.toString(), taxonRank);
 
-                // Build row with 7 columns:
-                // 0: Taxon Name (iNat) - link to iNaturalist taxon page
-                // 1: # Obs. since start date (iNat) - will be replaced later with link
-                // 2: # Obs. total (iNat) - placeholder
-                // 3: Recency ratio (iNat) - placeholder
-                // 4: # Obs. total (GBIF) - loading
-                // 5: Taxon Name (GBIF) - loading
-                // 6: Photo
                 row.innerHTML = `
                     <td><a href="https://www.inaturalist.org/taxa/${taxonId}" target="_blank" class="italic">${taxonName}</a>${taxonRank ? ` <span style="font-size:0.7em; color:#888;">(${taxonRank})</span>` : ''}</td>
                     <td>${countSince}</td>
@@ -909,4 +884,3 @@ I've updated the GBIF matching logic to preserve the original taxonomic rank fro
     </script>
 </body>
 </html>
-```
