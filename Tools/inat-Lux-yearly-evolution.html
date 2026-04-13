@@ -353,6 +353,9 @@
             intersect: false
           },
           plugins: {
+            datalabels: {
+              display: false
+            },
             zoom: {
               zoom: {
                 wheel: { enabled: true },
@@ -366,7 +369,7 @@
             },
             tooltip: {
               callbacks: {
-                label: (ctx) => `${ctx.dataset.label}: ${ctx.formattedValue} observations`
+                label: (ctx) => `${ctx.dataset.label}: ${ctx.raw} observations`
               }
             }
           },
@@ -393,7 +396,7 @@
             }
           }
         },
-        plugins: [ChartDataLabels] // Plugin is loaded but not used
+        plugins: [ChartDataLabels]
       });
     }
 
