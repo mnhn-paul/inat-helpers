@@ -2,30 +2,28 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>iNaturalist Observations in Luxembourg</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
       margin: 1rem;
     }
-
     .top-menu {
       margin-bottom: 1rem;
     }
-
     .chart-container {
       width: 100%;
       max-width: 1000px;
       margin: 0 auto 2rem;
       aspect-ratio: 2 / 1;
     }
-
     .chart-container.timeline {
       aspect-ratio: 2 / 1;
     }
-
     @media (max-width: 600px) {
       .chart-container.timeline {
         aspect-ratio: 1 / 1;
@@ -34,14 +32,35 @@
         font-size: 10px !important;
       }
     }
-
     canvas {
       width: 100% !important;
       height: 100% !important;
     }
-
     h1, h2 {
       text-align: center;
+    }
+    .controls {
+      margin: 1rem auto;
+      max-width: 1000px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      align-items: center;
+    }
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    label {
+      font-weight: bold;
+    }
+    select, input, button {
+      padding: 0.5rem;
+    }
+    .loading {
+      text-align: center;
+      color: #666;
     }
   </style>
 </head>
@@ -52,33 +71,139 @@
 
   <h1>iNaturalist Observations in Luxembourg</h1>
 
+  <div class="controls">
+    <div class="control-group">
+      <label for="yearRange">Select Years:</label>
+      <select id="yearRange" multiple>
+        <option value="2026" selected>2026</option>
+        <option value="2025" selected>2025</option>
+        <option value="2024" selected>2024</option>
+        <option value="2023" selected>2023</option>
+        <option value="2022" selected>2022</option>
+        <option value="2021" selected>2021</option>
+        <option value="2020" selected>2020</option>
+        <option value="2019" selected>2019</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label for="dateRange">Date Range:</label>
+      <select id="dateRange">
+        <option value="custom">Custom Range</option>
+        <option value="fullYear">Full Year</option>
+      </select>
+    </div>
+    <div class="control-group" id="customRangeGroup">
+      <label for="startDate">Start Date:</label>
+      <input type="date" id="startDate" value="2026-01-01" />
+      <label for="endDate">End Date:</label>
+      <input type="date" id="endDate" value="2026-04-13" />
+    </div>
+    <div class="control-group">
+      <label for="toggleLabels">Show Data Labels (Bar Chart):</label>
+      <input type="checkbox" id="toggleLabels" checked />
+    </div>
+    <button id="updateCharts">Update Charts</button>
+  </div>
+
   <div class="chart-container">
-    <h2>Jan 1 to Today - Total Observations Per Year</h2>
+    <h2 id="barChartTitle">Jan 1 to Today - Total Observations Per Year</h2>
     <canvas id="observationChart"></canvas>
+    <p class="loading" id="loadingBar">Loading data...</p>
   </div>
 
   <div class="chart-container timeline">
-    <h2>Cumulative Weekly Timeline - Jan 1 to Today (All Years)</h2>
+    <h2 id="lineChartTitle">Cumulative Weekly Timeline - Jan 1 to Today (All Years)</h2>
     <canvas id="timelineChart"></canvas>
+    <p class="loading" id="loadingLine">Loading data...</p>
   </div>
 
   <script>
+    // Config
     const placeId = 120582;
     const today = new Date();
     const currentYear = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
-    const monthDay = `${month}-${day}`;
-    const years = Array.from({ length: 8 }, (_, i) => currentYear - i);
-    const d1 = (year) => `${year}-01-01`;
-    const d2 = (year) => `${year}-${monthDay}`;
 
-    async function fetchObservationCount(year) {
+    // DOM Elements
+    const yearRangeSelect = document.getElementById('yearRange');
+    const dateRangeSelect = document.getElementById('dateRange');
+    const customRangeGroup = document.getElementById('customRangeGroup');
+    const startDateInput = document.getElementById('startDate');
+    const endDateInput = document.getElementById('endDate');
+    const toggleLabelsInput = document.getElementById('toggleLabels');
+    const updateButton = document.getElementById('updateCharts');
+    const barChartTitle = document.getElementById('barChartTitle');
+    const lineChartTitle = document.getElementById('lineChartTitle');
+    const loadingBar = document.getElementById('loadingBar');
+    const loadingLine = document.getElementById('loadingLine');
+
+    // Chart instances
+    let observationChart, timelineChart;
+
+    // Toggle custom range inputs
+    dateRangeSelect.addEventListener('change', () => {
+      customRangeGroup.style.display =
+        dateRangeSelect.value === 'custom' ? 'flex' : 'none';
+    });
+    customRangeGroup.style.display = 'flex';
+
+    // Update charts on button click
+    updateButton.addEventListener('click', () => {
+      updateCharts();
+    });
+
+    // Initialize charts
+    async function initCharts() {
+      await updateCharts();
+    }
+
+    // Update charts with new data
+    async function updateCharts() {
+      // Show loading
+      loadingBar.style.display = 'block';
+      loadingLine.style.display = 'block';
+
+      // Get selected years
+      const selectedYears = Array.from(yearRangeSelect.selectedOptions)
+        .map(opt => parseInt(opt.value))
+        .sort((a, b) => b - a);
+
+      // Get date range
+      let d1, d2, isFullYear;
+      if (dateRangeSelect.value === 'fullYear') {
+        isFullYear = true;
+        d1 = `${selectedYears[0]}-01-01`;
+        d2 = `${selectedYears[0]}-12-31`;
+      } else {
+        isFullYear = false;
+        d1 = startDateInput.value;
+        d2 = endDateInput.value;
+      }
+
+      // Update chart titles
+      const startDate = new Date(d1);
+      const endDate = new Date(d2);
+      const dateRangeStr = isFullYear
+        ? 'Full Year'
+        : `${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}`;
+      barChartTitle.textContent = `${dateRangeStr} - Total Observations Per Year`;
+      lineChartTitle.textContent = `Cumulative Weekly Timeline - ${dateRangeStr} (All Years)`;
+
+      // Fetch and plot data
+      await plotObservationChart(selectedYears, d1, d2, isFullYear);
+      await plotTimelineChart(selectedYears, d1, d2, isFullYear);
+
+      // Hide loading
+      loadingBar.style.display = 'none';
+      loadingLine.style.display = 'none';
+    }
+
+    // Fetch observation count for a year and date range
+    async function fetchObservationCount(year, d1, d2) {
       const url = new URL('https://api.inaturalist.org/v1/observations');
       url.search = new URLSearchParams({
         place_id: placeId,
-        d1: d1(year),
-        d2: d2(year),
+        d1: d1,
+        d2: d2,
         per_page: 1
       });
 
@@ -92,16 +217,25 @@
       }
     }
 
-    async function plotObservationChart() {
-      const observationCounts = await Promise.all(years.map(fetchObservationCount));
-      const ctx = document.getElementById('observationChart').getContext('2d');
+    // Plot bar chart
+    async function plotObservationChart(years, d1, d2, isFullYear) {
+      const observationCounts = await Promise.all(
+        years.map(year => {
+          const yearD1 = isFullYear ? `${year}-01-01` : d1.replace(/^\d{4}/, year);
+          const yearD2 = isFullYear ? `${year}-12-31` : d2.replace(/^\d{4}/, year);
+          return fetchObservationCount(year, yearD1, yearD2);
+        })
+      );
 
-      new Chart(ctx, {
+      const ctx = document.getElementById('observationChart').getContext('2d');
+      if (observationChart) observationChart.destroy();
+
+      observationChart = new Chart(ctx, {
         type: 'bar',
         data: {
           labels: years,
           datasets: [{
-            label: `Observations from Jan 1 to ${monthDay}`,
+            label: `Observations from ${d1} to ${d2}`,
             data: observationCounts,
             backgroundColor: 'skyblue',
             borderColor: 'rgba(75, 192, 192, 1)',
@@ -110,21 +244,43 @@
         },
         options: {
           responsive: true,
+          plugins: {
+            datalabels: {
+              display: toggleLabelsInput.checked,
+              color: 'black',
+              anchor: 'end',
+              align: 'top',
+              formatter: (value) => value.toLocaleString()
+            },
+            zoom: {
+              zoom: {
+                wheel: { enabled: true },
+                pinch: { enabled: true },
+                mode: 'xy'
+              },
+              pan: {
+                enabled: true,
+                mode: 'xy'
+              }
+            }
+          },
           scales: {
             y: {
               beginAtZero: true
             }
           }
-        }
+        },
+        plugins: [ChartDataLabels]
       });
     }
 
-    async function fetchHistogramData(year) {
+    // Fetch histogram data for a year and date range
+    async function fetchHistogramData(year, d1, d2) {
       const url = new URL('https://api.inaturalist.org/v1/observations/histogram');
       url.search = new URLSearchParams({
         place_id: placeId,
-        d1: d1(year),
-        d2: d2(year),
+        d1: d1,
+        d2: d2,
         interval: 'week',
         date_field: 'observed'
       });
@@ -139,18 +295,23 @@
       }
     }
 
+    // Get color for dataset
     function getColor(index) {
       const colors = ['red', 'blue', 'green', 'orange', 'purple', 'brown', 'teal', 'darkgray'];
       return colors[index % colors.length];
     }
 
-    async function plotTimelineChart() {
+    // Plot line chart
+    async function plotTimelineChart(years, d1, d2, isFullYear) {
       const datasets = [];
       let chartLabels = [];
 
       for (let i = 0; i < years.length; i++) {
         const year = years[i];
-        const weekData = await fetchHistogramData(year);
+        const yearD1 = isFullYear ? `${year}-01-01` : d1.replace(/^\d{4}/, year);
+        const yearD2 = isFullYear ? `${year}-12-31` : d2.replace(/^\d{4}/, year);
+
+        const weekData = await fetchHistogramData(year, yearD1, yearD2);
         const entries = Object.entries(weekData).sort(([a], [b]) => new Date(a) - new Date(b));
 
         const labels = entries.map(([week]) => week);
@@ -176,8 +337,9 @@
       }
 
       const ctx = document.getElementById('timelineChart').getContext('2d');
+      if (timelineChart) timelineChart.destroy();
 
-      new Chart(ctx, {
+      timelineChart = new Chart(ctx, {
         type: 'line',
         data: {
           labels: chartLabels,
@@ -189,6 +351,24 @@
           interaction: {
             mode: 'index',
             intersect: false
+          },
+          plugins: {
+            zoom: {
+              zoom: {
+                wheel: { enabled: true },
+                pinch: { enabled: true },
+                mode: 'xy'
+              },
+              pan: {
+                enabled: true,
+                mode: 'xy'
+              }
+            },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => `${ctx.dataset.label}: ${ctx.formattedValue} observations`
+              }
+            }
           },
           scales: {
             y: {
@@ -211,27 +391,14 @@
                 font: { size: 10 }
               }
             }
-          },
-          plugins: {
-            legend: {
-              position: 'bottom',
-              labels: {
-                font: { size: 10 }
-              }
-            },
-            tooltip: {
-              bodyFont: { size: 12 },
-              callbacks: {
-                label: (ctx) => `${ctx.dataset.label}: ${ctx.formattedValue} observations`
-              }
-            }
           }
-        }
+        },
+        plugins: [ChartDataLabels] // Plugin is loaded but not used
       });
     }
 
-    plotObservationChart();
-    plotTimelineChart();
+    // Initialize
+    initCharts();
   </script>
 </body>
 </html>
