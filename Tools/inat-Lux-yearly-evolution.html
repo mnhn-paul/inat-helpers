@@ -19,16 +19,19 @@
       width: 100%;
       max-width: 1000px;
       margin: 0 auto 2rem;
-      aspect-ratio: 2 / 1; /* Default landscape */
+      aspect-ratio: 2 / 1;
     }
 
     .chart-container.timeline {
-      aspect-ratio: 2 / 1; /* Desktop default for second chart */
+      aspect-ratio: 2 / 1;
     }
 
     @media (max-width: 600px) {
       .chart-container.timeline {
-        aspect-ratio: 2 / 3; /* Portrait on mobile */
+        aspect-ratio: 1 / 1;
+      }
+      .chart-container.timeline canvas {
+        font-size: 10px !important;
       }
     }
 
@@ -182,6 +185,7 @@
         },
         options: {
           responsive: true,
+          maintainAspectRatio: false,
           interaction: {
             mode: 'index',
             intersect: false
@@ -191,21 +195,32 @@
               beginAtZero: true,
               title: {
                 display: true,
-                text: 'Cumulative Observations'
+                text: 'Cumulative Observations',
+                font: { size: 12 }
               }
             },
             x: {
               title: {
                 display: true,
-                text: 'Week Start Date'
+                text: 'Week Start Date',
+                font: { size: 12 }
               },
               ticks: {
-                maxTicksLimit: 10
+                maxTicksLimit: 5,
+                autoSkip: true,
+                font: { size: 10 }
               }
             }
           },
           plugins: {
+            legend: {
+              position: 'bottom',
+              labels: {
+                font: { size: 10 }
+              }
+            },
             tooltip: {
+              bodyFont: { size: 12 },
               callbacks: {
                 label: (ctx) => `${ctx.dataset.label}: ${ctx.formattedValue} observations`
               }
