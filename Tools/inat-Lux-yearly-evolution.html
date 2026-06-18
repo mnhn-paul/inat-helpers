@@ -96,7 +96,7 @@
       <label for="startDate">Start Date:</label>
       <input type="date" id="startDate" value="2026-01-01" />
       <label for="endDate">End Date:</label>
-      <input type="date" id="endDate" value="2026-04-13" />
+      <input type="date" id="endDate" />
     </div>
     <div class="control-group">
       <label for="toggleLabels">Show Data Labels (Bar Chart):</label>
@@ -135,6 +135,9 @@
     const lineChartTitle = document.getElementById('lineChartTitle');
     const loadingBar = document.getElementById('loadingBar');
     const loadingLine = document.getElementById('loadingLine');
+    
+    // Set end date to today
+    endDateInput.value = today.toISOString().split('T')[0];
 
     // Chart instances
     let observationChart, timelineChart;
